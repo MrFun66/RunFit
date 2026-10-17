@@ -1,0 +1,1 @@
+{"name": "GRF Coach", "short_name": "GRF", "description": "全方位私人教练 - 营养师 + 跑步分析师 + 力量教练", "start_url": "/", "display": "standalone", "background_color": "#0f172a", "theme_color": "#0f172a", "icons": [{"src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png"}]}

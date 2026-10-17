@@ -1,0 +1,48 @@
+# ===== 瀵嗛挜涓庣幆澧?=====
+.env
+.env.local
+*.key
+secrets.*
+
+# ===== 鏁版嵁搴?=====
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+
+# ===== 杩愯鏃舵暟鎹紙绋嬪簭鑷姩鍒涘缓锛?====
+data/
+logs/
+current_url.txt
+
+# ===== 鏃ュ織 =====
+*.log
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ===== 涓€娆℃€х淮鎶よ剼鏈?=====
+tools/_fix*.py
+tools/fix_r*.py
+tools/patch_r*.py
+tools/check_and_restart.py
+tools/fix_routes_and_seed.py
+tools/set_llm_key.py
+
+# ===== 鍓嶇 =====
+node_modules/
+dist/
+
+# ===== 缂栬緫鍣ㄤ笌绯荤粺 =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

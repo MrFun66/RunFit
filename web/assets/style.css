@@ -1,0 +1,50 @@
+/* 自定义样式补充 */
+body {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* 隐藏滚动条但保留功能 */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 聊天气泡 */
+.chat-bubble-user {
+    @apply bg-brand text-white rounded-2xl rounded-tr-sm px-4 py-2 max-w-[85%] ml-auto self-end;
+}
+.chat-bubble-ai {
+    @apply bg-white border border-slate-100 shadow-sm rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%] mr-auto self-start;
+}
+
+.chat-bubble-ai p { @apply mb-2 leading-relaxed text-sm; }
+.chat-bubble-ai ul { @apply list-disc pl-5 mb-2 text-sm; }
+.chat-bubble-ai li { @apply mb-1; }
+.chat-bubble-ai strong { @apply font-bold text-brand-dark; }
+
+/* 动效 */
+.tab-content {
+    animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.loader {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #0ea5e9;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
