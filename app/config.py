@@ -55,6 +55,11 @@ class Settings:
     MEAL_IMG_DIR: Path = DATA_DIR / "meal_images"
     MAX_UPLOAD_MB: int = int(os.getenv("GRF_MAX_UPLOAD_MB", "256"))
 
+    # --- WebAuthn / Passkey ---
+    WEBAUTHN_RP_ID: str = os.getenv("GRF_WEBAUTHN_RP_ID", "")
+    WEBAUTHN_RP_NAME: str = os.getenv("GRF_WEBAUTHN_RP_NAME", "GRF Coach")
+    WEBAUTHN_ORIGIN: str = os.getenv("GRF_WEBAUTHN_ORIGIN", "")
+
 
 settings = Settings()
 settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

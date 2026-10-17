@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 import httpx
 
 from .config import settings
+from .llm_config import LlmCfg
 
 SYSTEM_PROMPT = """你是一个由三位专家组成的私人教练团队，服务同一个用户：
 
@@ -29,32 +30,32 @@ class LLMNotConfigured(RuntimeError):
     pass
 
 
-def _client() -> httpx.AsyncClient:
+def _client(cfg: LlmCfg) -> httpx.AsyncClient:
     return httpx.AsyncClient(
-        base_url=settings.LLM_BASE_URL.rstrip("/"),
+        base_url=cfg.base_url.rstrip("/"),
         timeout=settings.LLM_TIMEOUT,
         headers={
-            "Authorization": f"Bearer {settings.LLM_API_KEY}",
+            "Authorization": f"Bearer {cfg.api_key}",
             "Content-Type": "application/json",
         },
     )
 
 
-def is_configured() -> bool:
-    return bool(settings.LLM_API_KEY)
+def is_configured(cfg: LlmCfg | None = None) -> bool:
+    return bool(cfg.api_key) if cfg is not None else bool(settings.LLM_API_KEY)
 
 
-async def chat(messages: list[dict], temperature: float = 0.6, max_tokens: int = 2000) -> str:
+async def chat(cfg: LlmCfg, messages: list[dict], temperature: float = 0.6, max_tokens: int = 2000) -> str:
     if not is_configured():
         raise LLMNotConfigured("未配置 GRF_LLM_API_KEY，请在 .env 中填写 DeepSeek API Key")
     payload = {
-        "model": settings.LLM_MODEL,
+        "model": cfg.model,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}, *messages],
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": False,
     }
-    async with _client() as c:
+    async with _client(cfg) as c:
         r = await c.post("/chat/completions", json=payload)
         if r.status_code >= 400:
             raise RuntimeError(f"LLM 调用失败 {r.status_code}: {r.text[:300]}")
@@ -62,17 +63,17 @@ async def chat(messages: list[dict], temperature: float = 0.6, max_tokens: int =
     return data["choices"][0]["message"]["content"]
 
 
-async def chat_stream(messages: list[dict], temperature: float = 0.6) -> AsyncIterator[str]:
+async def chat_stream(cfg: LlmCfg, messages: list[dict], temperature: float = 0.6) -> AsyncIterator[str]:
     """流式输出，用于网页逐字显示。"""
-    if not is_configured():
-        raise LLMNotConfigured("未配置 GRF_LLM_API_KEY")
+    if not is_configured(cfg):
+        raise LLMNotConfigured("未配置 API Key")
     payload = {
-        "model": settings.LLM_MODEL,
+        "model": cfg.model,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}, *messages],
         "temperature": temperature,
         "stream": True,
     }
-    async with _client() as c:
+    async with _client(cfg) as c:
         async with c.stream("POST", "/chat/completions", json=payload) as r:
             if r.status_code >= 400:
                 body = await r.aread()
@@ -92,10 +93,10 @@ async def chat_stream(messages: list[dict], temperature: float = 0.6) -> AsyncIt
                     continue
 
 
-async def analyze_meal_image(image_b64: str, mime: str = "image/jpeg", note: str = "") -> dict:
+async def analyze_meal_image(cfg: LlmCfg, image_b64: str, mime: str = "image/jpeg", note: str = "") -> dict:
     """用 DeepSeek 原生多模态（deepseek-flash）识别餐食，返回结构化宏量。"""
-    if not is_configured():
-        raise LLMNotConfigured("未配置 GRF_LLM_API_KEY")
+    if not is_configured(cfg):
+        raise LLMNotConfigured("未配置 API Key")
 
     prompt = (
         "你是营养师。识别这张照片里的食物，估算每种食物的重量（克）和营养。\n"
@@ -113,7 +114,7 @@ async def analyze_meal_image(image_b64: str, mime: str = "image/jpeg", note: str
         prompt += f"\n用户补充说明：{note}"
 
     payload = {
-        "model": settings.LLM_VISION_MODEL,
+        "model": cfg.vision_model,
         "messages": [
             {
                 "role": "user",
@@ -130,7 +131,7 @@ async def analyze_meal_image(image_b64: str, mime: str = "image/jpeg", note: str
         "max_tokens": 1200,
         "stream": False,
     }
-    async with _client() as c:
+    async with _client(cfg) as c:
         r = await c.post("/chat/completions", json=payload)
         if r.status_code >= 400:
             raise RuntimeError(f"视觉模型调用失败 {r.status_code}: {r.text[:300]}")

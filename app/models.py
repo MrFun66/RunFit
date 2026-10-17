@@ -155,6 +155,7 @@ class TemplateItem(Base):
     sets: Mapped[int | None] = mapped_column(Integer)        # 计划组数
     reps: Mapped[str | None] = mapped_column(String(16))     # "8-12" 允许区间
     rest_s: Mapped[int | None] = mapped_column(Integer)
+    target_weight_kg: Mapped[float | None] = mapped_column(Float)  # 计划预设重量
     note: Mapped[str | None] = mapped_column(Text)
 
     template: Mapped[WorkoutTemplate] = relationship(back_populates="items")
@@ -250,3 +251,26 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text)
+class WebauthnCredential(Base):
+    """Passkey / WebAuthn 凭证。"""
+    __tablename__ = "webauthn_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    credential_id: Mapped[str] = mapped_column(String(512), unique=True, index=True)
+    public_key: Mapped[str] = mapped_column(Text)
+    sign_count: Mapped[int] = mapped_column(Integer, default=0)
+    transports: Mapped[str | None] = mapped_column(String(128))
+    name: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
+class UserLlmConfig(Base):
+    """每个用户自己的 AI 配置。不填则 AI 功能不可用。"""
+    __tablename__ = "user_llm_configs"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    api_key: Mapped[str | None] = mapped_column(Text)
+    base_url: Mapped[str | None] = mapped_column(String(256))
+    model: Mapped[str | None] = mapped_column(String(64))
+    vision_model: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -1,0 +1,10 @@
+﻿import sqlite3
+c=sqlite3.connect("grf.db")
+rows=c.execute("SELECT id,name,primary_muscles,secondary_muscles,category FROM exercises").fetchall()
+print("count",len(rows))
+for r in rows: print(r)
+print("--- sets ---")
+print(c.execute("SELECT COUNT(*) FROM workout_sets").fetchone())
+for r in c.execute("SELECT ws.exercise_id, e.name, e.primary_muscles, COUNT(*), SUM(ws.weight_kg*ws.reps) FROM workout_sets ws LEFT JOIN exercises e ON e.id=ws.exercise_id GROUP BY ws.exercise_id").fetchall(): print(r)
+print("--- workouts ---")
+for r in c.execute("SELECT id,date,name FROM workouts ORDER BY date DESC LIMIT 10").fetchall(): print(r)

@@ -599,6 +599,41 @@ def iter_apple_health_records(path: Path, wanted: set[str]):
             del el.getparent()[0]
 
 
+def iter_apple_sleep(path: Path):
+    """流式提取 SleepAnalysis 记录，按天聚合睡眠时长（小时）。
+
+    value 取值如 HKCategoryValueSleepAnalysisAsleepCore / Deep / REM / InBed。
+    只统计真正的睡眠阶段（Asleep*），InBed/Awake 忽略。
+    """
+    ctx = etree.iterparse(
+        str(path), events=("end",), tag="Record", huge_tree=True, recover=True
+    )
+    per_day: dict[str, float] = {}
+    for _, el in ctx:
+        if el.get("type") != "HKCategoryTypeIdentifierSleepAnalysis":
+            el.clear()
+            while el.getprevious() is not None:
+                del el.getparent()[0]
+            continue
+        val = el.get("value") or ""
+        if "Asleep" not in val:
+            el.clear()
+            while el.getprevious() is not None:
+                del el.getparent()[0]
+            continue
+        start = parse_dt(el.get("startDate"))
+        end = parse_dt(el.get("endDate"))
+        if start and end and end > start:
+            hours = (end - start).total_seconds() / 3600.0
+            # 记到起床那天
+            day = end.date().isoformat()
+            per_day[day] = round(per_day.get(day, 0.0) + hours, 2)
+        el.clear()
+        while el.getprevious() is not None:
+            del el.getparent()[0]
+    return per_day
+
+
 def parse_apple_export(path: Path, progress=None) -> dict:
     """解析 Apple 健康 export.xml。
 
@@ -635,6 +670,10 @@ def parse_apple_export(path: Path, progress=None) -> dict:
             body.setdefault(day, {})["resting_hr"] = val
         elif t == "HKQuantityTypeIdentifierHeartRate":
             hr_samples.append((dt, val))
+
+    sleep = iter_apple_sleep(path)
+    for day, hours in sleep.items():
+        body.setdefault(day, {})["sleep_hours"] = hours
 
     return {"workouts": workouts, "body_metrics": body, "hr_samples": hr_samples}
 

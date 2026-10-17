@@ -1,0 +1,11 @@
+﻿import io,re
+h=io.open("web/index.html",encoding="utf-8").read()
+m=re.search(r'app\.js\?v=([0-9]+)', h)
+print("app.js?v =", m.group(1) if m else None)
+print("has trend-grain:", 'id="trend-grain"' in h)
+print("has strength-chart:", 'id="strength-chart"' in h)
+print("has modal-log:", 'id="modal-log"' in h)
+print("has modal-edit-workout:", 'modal-edit-workout' in h)
+sw=io.open("web/sw.js",encoding="utf-8").read()
+m2=re.search(r"CACHE_NAME\s*=\s*['\"]([^'\"]+)", sw)
+print("sw cache =", m2.group(1) if m2 else None)

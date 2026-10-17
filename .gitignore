@@ -1,21 +1,21 @@
-# ===== 瀵嗛挜涓庣幆澧?=====
+# ===== 鐎靛棝鎸滄稉搴ｅ箚婢?=====
 .env
 .env.local
 *.key
 secrets.*
 
-# ===== 鏁版嵁搴?=====
+# ===== 閺佺増宓佹惔?=====
 *.db
 *.db-shm
 *.db-wal
 *.sqlite3
 
-# ===== 杩愯鏃舵暟鎹紙绋嬪簭鑷姩鍒涘缓锛?====
+# ===== 鏉╂劘顢戦弮鑸垫殶閹诡噯绱欑粙瀣碍閼奉亜濮╅崚娑樼紦閿?====
 data/
 logs/
 current_url.txt
 
-# ===== 鏃ュ織 =====
+# ===== 閺冦儱绻?=====
 *.log
 
 # ===== Python =====
@@ -28,7 +28,7 @@ env/
 .mypy_cache/
 .ruff_cache/
 
-# ===== 涓€娆℃€х淮鎶よ剼鏈?=====
+# ===== 娑撯偓濞嗏剝鈧呮樊閹躲倛鍓奸張?=====
 tools/_fix*.py
 tools/fix_r*.py
 tools/patch_r*.py
@@ -36,13 +36,38 @@ tools/check_and_restart.py
 tools/fix_routes_and_seed.py
 tools/set_llm_key.py
 
-# ===== 鍓嶇 =====
+# ===== 閸撳秶顏?=====
 node_modules/
 dist/
 
-# ===== 缂栬緫鍣ㄤ笌绯荤粺 =====
+# ===== 缂傛牞绶崳銊ょ瑢缁崵绮?=====
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 desktop.ini
+# 临时文件
+COMMIT_MSG.txt
+tools/push_via_api.py
+
+# ===== GRF: 临时脚本与备份（不入库）=====
+tools/_*.py
+tools/v*.py
+tools/e2e_*.py
+*.bak
+*.bak.*
+*.bak_*
+*.orig
+*.rej
+server.err.log
+server.log
+uvicorn.err.log
+uvicorn.out.log
+cloudflared.log
+00_数据采集清单.md
+你要填的NS.txt
+*.bak*
+web/assets/*.bak*
+web/*.bak*
+00_数据采集清单.md
+tools/dump.txt

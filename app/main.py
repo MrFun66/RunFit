@@ -63,6 +63,9 @@ app.add_middleware(
 
 app.include_router(api_router)
 
+from .webauthn_auth import router as passkey_router  # noqa: E402
+app.include_router(passkey_router)
+
 
 @app.get("/api/health")
 def health():
@@ -81,11 +84,19 @@ async def _unhandled(_request: Request, exc: Exception):
 
 # --- 静态前端 ---
 if STATIC_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+    class NoCacheStatic(StaticFiles):
+        async def get_response(self, path, scope):
+            resp = await super().get_response(path, scope)
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+            return resp
+
+    app.mount("/assets", NoCacheStatic(directory=STATIC_DIR / "assets"), name="assets")
+
+    NOCACHE = {"Cache-Control": "no-cache, must-revalidate", "Pragma": "no-cache"}
 
     @app.get("/")
     def index():
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(STATIC_DIR / "index.html", headers=NOCACHE)
 
     @app.get("/favicon.ico")
     def favicon():
@@ -108,7 +119,16 @@ if STATIC_DIR.exists():
     def service_worker():
         p = STATIC_DIR / "sw.js"
         if p.exists():
-            return FileResponse(p, media_type="application/javascript")
+            # Service Worker 绝不能被缓存，否则旧 SW 会一直供给旧页面
+            return FileResponse(
+                p,
+                media_type="application/javascript",
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+            )
         return JSONResponse(status_code=404, content={"detail": "not found"})
 else:
     log.warning("前端目录不存在: %s", STATIC_DIR)

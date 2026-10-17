@@ -17,6 +17,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session as OrmSession
 
 from . import analytics, llm, nutrition, parsers, strength
+from .llm_config import get_cfg, has_own_cfg, is_owner
 from .config import settings
 from .db import get_db
 from .exercises_seed import seed_exercises
@@ -194,6 +195,30 @@ def login(body: LoginIn, response: Response, db: OrmSession = Depends(get_db)):
     return {"ok": True, "username": u.username}
 
 
+class PasswordIn(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@router.post("/auth/password")
+def change_password(
+    body: PasswordIn,
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    """修改当前用户密码。"""
+    if not verify_password(body.old_password, user.password_hash):
+        raise HTTPException(400, "当前密码不正确")
+    if len(body.new_password) < 8:
+        raise HTTPException(400, "新密码至少 8 位")
+    if body.new_password == body.old_password:
+        raise HTTPException(400, "新密码不能与当前密码相同")
+    user.password_hash = hash_password(body.new_password)
+    db.add(user)
+    db.commit()
+    return {"ok": True, "message": "密码已更新"}
+
+
 @router.post("/auth/logout")
 def logout(request: Request, response: Response, db: OrmSession = Depends(get_db)):
     tok = request.cookies.get(settings.SESSION_COOKIE)
@@ -235,7 +260,8 @@ def read_profile(user: User = Depends(current_user), db: OrmSession = Depends(ge
         "birth_year": user.birth_year,
         "target_bodyfat_pct": user.target_bodyfat_pct,
         "onboarded": user.onboarded,
-        "llm_configured": llm.is_configured(),
+        "llm_configured": get_cfg(db, user).configured,
+        "llm_own": has_own_cfg(db, user),
         "zones": analytics.hr_zones(
             _user_profile(db, user)["hr_max"], _user_profile(db, user)["hr_rest"]
         ),
@@ -562,6 +588,209 @@ def delete_workout(wid: int, user: User = Depends(current_user), db: OrmSession 
     return {"ok": True}
 
 
+MUSCLE_TO_PART = {
+    "chest": "chest",
+    "lats": "back", "mid_back": "back", "lower_back": "back", "traps": "back",
+    "front_delt": "shoulder", "side_delt": "shoulder", "rear_delt": "shoulder",
+    "biceps": "arms", "triceps": "arms", "forearm": "arms",
+    "quads": "legs", "hamstrings": "legs", "glutes": "legs", "calves": "legs",
+    "abs": "core", "obliques": "core", "hip_flexor": "core",
+}
+
+PART_META = [
+    ("chest", "\u80f8", "#f97316"),
+    ("back", "\u80cc", "#0ea5e9"),
+    ("shoulder", "\u80a9", "#a855f7"),
+    ("arms", "\u624b\u81c2", "#22c55e"),
+    ("legs", "\u817f", "#ef4444"),
+    ("core", "\u6838\u5fc3", "#eab308"),
+]
+
+
+def _muscles_to_parts(raw) -> list:
+    """exercise.primary_muscles 是 JSON 数组字符串，映射到六大部位。"""
+    import json as _json
+    if not raw:
+        return []
+    try:
+        arr = _json.loads(raw) if isinstance(raw, str) else list(raw)
+    except Exception:
+        arr = [raw]
+    parts = []
+    for m in arr:
+        p = MUSCLE_TO_PART.get(str(m).strip().lower())
+        if p and p not in parts:
+            parts.append(p)
+    return parts
+
+
+@router.get("/strength/trend")
+def strength_trend(
+    grain: str = Query("day", pattern="^(day|week|month|year)$"),
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    """力量训练容量图。
+    日：今天的各部位容量（不同颜色=不同部位）
+    周：本周 周一..周日，按月/年：x 轴为时间，颜色=训练部位堆叠
+    """
+    from collections import defaultdict
+
+    today = date.today()
+
+    def parts_of(st):
+        ex = ex_map.get(st.exercise_id)
+        parts = _muscles_to_parts(getattr(ex, "primary_muscles", None)) if ex else []
+        if not parts and ex is not None:
+            cat = (getattr(ex, "category", "") or "").lower()
+            parts = {"push": ["chest"], "pull": ["back"], "legs": ["legs"], "core": ["core"]}.get(cat, ["core"])
+        return parts or ["core"]
+
+    def vol_of(st):
+        v = float((st.weight_kg or 0) * (st.reps or 0))
+        if v <= 0:
+            v = float(st.reps or 0)
+        return max(v, 0.0)
+
+    ex_map = {e.id: e for e in db.scalars(select(Exercise)).all()}
+
+    # ---------- 日：今天各部位 ----------
+    if grain == "day":
+        rows = db.scalars(
+            select(Workout).where(Workout.user_id == user.id, Workout.date == today)
+        ).all()
+        agg = {p: 0.0 for p, _, _ in PART_META}
+        for w in rows:
+            for st in w.sets:
+                if st.is_warmup:
+                    continue
+                v = vol_of(st)
+                if v <= 0:
+                    continue
+                ps = parts_of(st)
+                for p in ps:
+                    agg[p] += v / len(ps)
+        buckets, data, colors = [], [], []
+        for p, label, color in PART_META:
+            if agg[p] > 0:
+                buckets.append({"key": p, "label": label})
+                data.append(round(agg[p]))
+                colors.append(color)
+        total = round(sum(data))
+        series = []
+        if buckets:
+            series.append({
+                "part": "all", "label": "今日容量", "color": "#0ea5e9",
+                "data": data, "colors": colors, "total": total, "sets": 0,
+            })
+        return {
+            "grain": "day", "mode": "by_part", "buckets": buckets,
+            "series": series, "total_volume": total, "active_buckets": len(buckets),
+        }
+
+    # ---------- 周 / 月 / 年：时间轴 ----------
+    weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    if grain == "week":
+        monday = today - timedelta(days=today.weekday())
+        buckets = [((monday + timedelta(days=k)).isoformat(), weekday_names[k]) for k in range(7)]
+        start = monday
+    elif grain == "month":
+        first = today.replace(day=1)
+        buckets = []
+        for d in range(1, 32):
+            try:
+                cur = first.replace(day=d)
+            except ValueError:
+                break
+            n = (d - 1 + first.weekday()) // 7 + 1
+            key = cur.isoformat()
+            if not buckets or buckets[-1][1] != f"第{n}周":
+                buckets.append((key, f"第{n}周"))
+        start = first
+    else:
+        buckets = [(f"{today.year}-{m:02d}", f"{m}月") for m in range(1, 13)]
+        start = date(today.year, 1, 1)
+
+    workouts = db.scalars(
+        select(Workout).where(Workout.user_id == user.id, Workout.date >= start).order_by(Workout.date)
+    ).all()
+
+    idx_of = {b[0]: n for n, b in enumerate(buckets)}
+    data = {p: [0.0 for _ in buckets] for p, _, _ in PART_META}
+    set_count = {p: 0 for p, _, _ in PART_META}
+    used = set()
+
+    for w in workouts:
+        d = w.date
+        if grain == "week":
+            key = d.isoformat()
+        elif grain == "month":
+            key = d.isoformat()
+            n = (d.day - 1 + d.replace(day=1).weekday()) // 7 + 1
+            key = next((k for k, l in buckets if l == f"第{n}周"), None)
+        else:
+            key = f"{d.year}-{d.month:02d}"
+        pos = idx_of.get(key)
+        if pos is None:
+            continue
+        for st in w.sets:
+            if st.is_warmup:
+                continue
+            v = vol_of(st)
+            if v <= 0:
+                continue
+            ps = parts_of(st)
+            share = v / len(ps)
+            for p in ps:
+                data[p][pos] += share
+                set_count[p] += 1
+        used.add(pos)
+
+    series = []
+    for p, label, color in PART_META:
+        tot = round(sum(data[p]))
+        if tot <= 0:
+            continue
+        series.append({
+            "part": p, "label": label, "color": color,
+            "data": [round(v) for v in data[p]], "total": tot, "sets": set_count[p],
+        })
+
+    return {
+        "grain": grain, "mode": "by_time",
+        "buckets": [{"key": k, "label": l} for k, l in buckets],
+        "series": series,
+        "total_volume": round(sum(x["total"] for x in series)),
+        "active_buckets": len(used),
+    }
+
+
+@router.put("/workouts/{wid:int}")
+def update_workout(
+    wid: int,
+    body: WorkoutIn,
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    """整体替换某条训练记录（编辑用）。"""
+    w = db.get(Workout, wid)
+    if not w or w.user_id != user.id:
+        raise HTTPException(404, "记录不存在")
+    w.date = body.date
+    w.name = body.name
+    w.focus = body.focus
+    w.duration_min = body.duration_min
+    w.rpe = body.rpe
+    w.notes = body.notes
+    for old in list(w.sets):
+        db.delete(old)
+    db.flush()
+    for i, st in enumerate(body.sets):
+        db.add(WorkoutSet(workout_id=w.id, idx=i, **st.model_dump()))
+    db.commit()
+    return {"ok": True, "id": w.id, "sets": len(body.sets)}
+
+
 @router.get("/strength/stats")
 def strength_stats(
     days: int = Query(7, ge=1, le=365),
@@ -765,8 +994,8 @@ def _full_context(db: OrmSession, user: User) -> str:
 
 @router.post("/coach/chat")
 async def coach_chat(body: ChatIn, user: User = Depends(current_user), db: OrmSession = Depends(get_db)):
-    if not llm.is_configured():
-        raise HTTPException(400, "尚未配置 DeepSeek API Key，请在 D:\\GRF\\.env 中填写 GRF_LLM_API_KEY")
+    if not get_cfg(db, user).configured:
+        raise HTTPException(400, "尚未配置 AI Key。请到「我的 → AI 设置」填入你自己的 API Key")
 
     history = db.scalars(
         select(CoachMessage).where(CoachMessage.user_id == user.id).order_by(CoachMessage.id.desc()).limit(10)
@@ -776,7 +1005,7 @@ async def coach_chat(body: ChatIn, user: User = Depends(current_user), db: OrmSe
     ctx = _full_context(db, user)
     msgs.append({"role": "user", "content": f"{ctx}\n\n---\n\n用户提问：{body.message}"})
 
-    reply = await llm.chat(msgs)
+    reply = await llm.chat(get_cfg(db, user), msgs)
 
     db.add(CoachMessage(user_id=user.id, role="user", content=body.message, module=body.module))
     db.add(CoachMessage(user_id=user.id, role="assistant", content=reply, module=body.module))
@@ -786,7 +1015,7 @@ async def coach_chat(body: ChatIn, user: User = Depends(current_user), db: OrmSe
 
 @router.post("/coach/stream")
 async def coach_stream(body: ChatIn, user: User = Depends(current_user), db: OrmSession = Depends(get_db)):
-    if not llm.is_configured():
+    if not get_cfg(db, user).configured:
         raise HTTPException(400, "尚未配置 DeepSeek API Key")
 
     history = db.scalars(
@@ -802,7 +1031,7 @@ async def coach_stream(body: ChatIn, user: User = Depends(current_user), db: Orm
     async def gen():
         buf = []
         try:
-            async for delta in llm.chat_stream(msgs):
+            async for delta in llm.chat_stream(get_cfg(db, user), msgs):
                 buf.append(delta)
                 yield delta
         except Exception as exc:  # noqa: BLE001
@@ -822,12 +1051,14 @@ async def coach_stream(body: ChatIn, user: User = Depends(current_user), db: Orm
 @router.get("/coach/history")
 def coach_history(
     limit: int = Query(50, ge=1, le=500),
+    module: str | None = None,
     user: User = Depends(current_user),
     db: OrmSession = Depends(get_db),
 ):
-    rows = db.scalars(
-        select(CoachMessage).where(CoachMessage.user_id == user.id).order_by(CoachMessage.id.desc()).limit(limit)
-    ).all()
+    stmt = select(CoachMessage).where(CoachMessage.user_id == user.id)
+    if module:
+        stmt = stmt.where(CoachMessage.module == module)
+    rows = db.scalars(stmt.order_by(CoachMessage.id.desc()).limit(limit)).all()
     return {
         "items": [
             {"id": m.id, "role": m.role, "content": m.content, "module": m.module,
@@ -841,6 +1072,92 @@ def coach_history(
 def coach_review_data(user: User = Depends(current_user), db: OrmSession = Depends(get_db)):
     """给「周复盘」按钮用的聚合数据（不调 LLM）。"""
     return {"context": _full_context(db, user)}
+
+
+# ==========================================================================
+# Apple 健康数据导入（export.xml）
+# ==========================================================================
+@router.post("/health/import")
+async def import_apple_health(
+    file: UploadFile = File(...),
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    """导入 Apple 健康 export.xml：训练记录 + 体重/体脂/静息心率/睡眠。"""
+    name = file.filename or "export.xml"
+    if not name.lower().endswith(".xml"):
+        raise HTTPException(400, "请上传 export.xml")
+
+    dest = settings.UPLOAD_DIR / f"health_{uuid.uuid4().hex}.xml"
+    with dest.open("wb") as fh:
+        shutil.copyfileobj(file.file, fh)
+
+    try:
+        data = parsers.parse_apple_export(dest)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"解析失败：{exc}")
+
+    # 1) 训练记录 -> runs
+    runs_added = 0
+    for w in data.get("workouts", []):
+        pr = _apple_workout_to_parsed(w)
+        if pr and _save_parsed(db, user.id, pr, name):
+            runs_added += 1
+
+    # 2) 身体指标 -> body_metrics（按天 upsert，只填空缺，不覆盖手填）
+    body_added, body_updated = 0, 0
+    for day_str, vals in (data.get("body_metrics") or {}).items():
+        try:
+            d = date.fromisoformat(day_str)
+        except ValueError:
+            continue
+        row = db.scalars(
+            select(BodyMetric).where(BodyMetric.user_id == user.id, BodyMetric.date == d)
+        ).first()
+        if row is None:
+            row = BodyMetric(user_id=user.id, date=d)
+            db.add(row)
+            body_added += 1
+        else:
+            body_updated += 1
+        for k, v in vals.items():
+            if hasattr(row, k) and v is not None:
+                setattr(row, k, v)
+
+    db.commit()
+    return {
+        "ok": True,
+        "runs_imported": runs_added,
+        "body_days_added": body_added,
+        "body_days_updated": body_updated,
+        "metrics": sorted(list((data.get("body_metrics") or {}).keys()))[:0] or None,
+    }
+
+
+def _apple_workout_to_parsed(w: dict):
+    """把 Apple Health 的 workout dict 转成 ParsedRun。"""
+    try:
+        start = w.get("start")
+        dur = w.get("duration_s")
+        if not start or not dur:
+            return None
+        dist = w.get("distance_m") or 0
+        ext = "apple:" + start.isoformat()
+        return parsers.ParsedRun(
+            start_time=start,
+            activity_type=parsers._map_sport(w.get("sport") or "other"),
+            name=w.get("sport"),
+            distance_m=float(dist) if dist else 0.0,
+            duration_s=float(dur),
+            moving_s=None,
+            avg_hr=None, max_hr=None, avg_cadence=None,
+            elevation_gain_m=None, calories=w.get("energy_kcal"),
+            samples=[], splits=[],
+            source="apple_health",
+            external_id=ext,
+        )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ==========================================================================
@@ -880,7 +1197,8 @@ def dashboard(user: User = Depends(current_user), db: OrmSession = Depends(get_d
             "bodyfat_pct": bm.bodyfat_pct if bm else None,
             "date": bm.date.isoformat() if bm else None,
         },
-        "llm_configured": llm.is_configured(),
+        "llm_configured": get_cfg(db, user).configured,
+        "llm_own": has_own_cfg(db, user),
     }
 
 
@@ -900,6 +1218,7 @@ def _template_dict(t: WorkoutTemplate, last_weights: dict[int, dict] | None = No
                 "sets": it.sets,
                 "reps": it.reps,
                 "rest_s": it.rest_s,
+                "target_weight_kg": it.target_weight_kg,
                 "note": it.note,
                 "last_weight_kg": prev["weight_kg"] if prev else None,
                 "last_rpe": prev["rpe"] if prev else None,
@@ -964,6 +1283,7 @@ class TemplateItemIn(BaseModel):
     sets: int | None = None
     reps: str | None = None
     rest_s: int | None = None
+    target_weight_kg: float | None = None
     note: str | None = None
 
 
@@ -983,6 +1303,75 @@ def create_template(body: TemplateIn, user: User = Depends(current_user), db: Or
         db.add(TemplateItem(template_id=t.id, idx=i, **it.model_dump()))
     db.commit()
     return {"ok": True, "id": t.id}
+
+
+def _clone_template(db: OrmSession, t: WorkoutTemplate, user_id: int, name: str | None = None) -> WorkoutTemplate:
+    """把模板（可能是内置的）复制一份归到用户名下。"""
+    nt = WorkoutTemplate(
+        user_id=user_id,
+        name=name or t.name,
+        focus=t.focus,
+        note=t.note,
+        is_builtin=False,
+        sort_order=t.sort_order,
+    )
+    db.add(nt)
+    db.flush()
+    for it in t.items:
+        db.add(
+            TemplateItem(
+                template_id=nt.id,
+                exercise_id=it.exercise_id,
+                idx=it.idx,
+                sets=it.sets,
+                reps=it.reps,
+                rest_s=it.rest_s,
+                target_weight_kg=it.target_weight_kg,
+                note=it.note,
+            )
+        )
+    db.flush()
+    return nt
+
+
+@router.put("/templates/{tid:int}")
+def update_template(
+    tid: int,
+    body: TemplateIn,
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    """全量更新计划。内置模板会先克隆成用户自己的副本再改，避免破坏内置数据。"""
+    t = db.get(WorkoutTemplate, tid)
+    if not t or (t.user_id is not None and t.user_id != user.id):
+        raise HTTPException(404, "模板不存在")
+    cloned = False
+    if t.user_id is None:
+        t = _clone_template(db, t, user.id, body.name)
+        cloned = True
+    t.name = body.name
+    t.focus = body.focus
+    t.note = body.note
+    t.items.clear()
+    db.flush()
+    for i, it in enumerate(body.items):
+        db.add(TemplateItem(template_id=t.id, idx=i, **it.model_dump()))
+    db.commit()
+    return {"ok": True, "id": t.id, "cloned": cloned}
+
+
+@router.post("/templates/{tid:int}/duplicate")
+def duplicate_template(
+    tid: int,
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    t = db.get(WorkoutTemplate, tid)
+    if not t or (t.user_id is not None and t.user_id != user.id):
+        raise HTTPException(404, "模板不存在")
+    nt = _clone_template(db, t, user.id, f"{t.name} 副本")
+    db.commit()
+    return {"ok": True, "id": nt.id}
 
 
 @router.delete("/templates/{tid:int}")
@@ -1015,6 +1404,20 @@ def log_from_template(
     if not t or (t.user_id is not None and t.user_id != user.id):
         raise HTTPException(404, "模板不存在")
 
+    # 同一天、同一计划：覆盖式保存（不叠加）
+    existing = db.scalars(
+        select(Workout).where(
+            Workout.user_id == user.id,
+            Workout.date == body.date,
+            Workout.name == t.name,
+        )
+    ).all()
+    replaced_id = None
+    for old_w in existing:
+        replaced_id = old_w.id
+        db.delete(old_w)   # cascade 删除 sets
+    db.flush()
+
     w = Workout(
         user_id=user.id,
         date=body.date,
@@ -1028,7 +1431,10 @@ def log_from_template(
 
     idx = 0
     for it in t.items:
+        # 优先用本次填写的重量，否则回退到计划里预设的重量
         weight = body.weights.get(it.exercise_id)
+        if weight is None:
+            weight = it.target_weight_kg
         rpe = body.rpes.get(it.exercise_id)
         n_sets = it.sets or 3
         for _ in range(n_sets):
@@ -1045,7 +1451,7 @@ def log_from_template(
             )
             idx += 1
     db.commit()
-    return {"ok": True, "id": w.id, "sets": idx}
+    return {"ok": True, "id": w.id, "sets": idx, "replaced": replaced_id}
 
 
 def _parse_reps_mid(reps: str | None) -> int | None:
@@ -1065,9 +1471,10 @@ async def meal_photo(
     file: UploadFile = File(...),
     note: str = Query(""),
     user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
 ):
     """上传餐食照片 → 视觉模型识别 → 返回结构化宏量（不落库，用户确认后再保存）。"""
-    if not llm.is_configured():
+    if not get_cfg(db, user).configured:
         raise HTTPException(400, "尚未配置 DeepSeek API Key")
 
     raw = await file.read()
@@ -1081,9 +1488,16 @@ async def meal_photo(
     mime = "image/png" if suffix == ".png" else "image/jpeg"
     b64 = base64.b64encode(raw).decode()
     try:
-        result = await llm.analyze_meal_image(b64, mime=mime, note=note)
+        result = await llm.analyze_meal_image(get_cfg(db, user), b64, mime=mime, note=note)
+    except llm.LLMNotConfigured as exc:
+        raise HTTPException(400, "还没配置 AI Key，请到「我的→设置→AI 设置」填入 API Key") from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(500, f"识别失败：{exc}") from exc
+        msg = str(exc)
+        if "401" in msg or "Unauthorized" in msg or "invalid_api_key" in msg:
+            raise HTTPException(400, "AI Key 无效或已过期，请到「我的→设置→AI 设置」重新填写") from exc
+        if "timeout" in msg.lower() or "timed out" in msg.lower():
+            raise HTTPException(504, "识别超时，请换一张更小的照片或稍后重试") from exc
+        raise HTTPException(500, f"识别失败（服务器）：{msg[:200]}") from exc
 
     items = result.get("items") or []
     total = {
@@ -1099,3 +1513,139 @@ async def meal_photo(
         "note": result.get("note", ""),
         "image": dest.name,
     }
+
+# ==========================================================================
+# 用户自己的 AI 配置
+# ==========================================================================
+class LlmCfgIn(BaseModel):
+    api_key: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    vision_model: str | None = None
+
+
+def _mask(k: str | None) -> str:
+    if not k:
+        return ""
+    if len(k) <= 8:
+        return "*" * len(k)
+    return k[:4] + "*" * (len(k) - 8) + k[-4:]
+
+
+@router.get("/settings/llm")
+def get_llm_settings(user: User = Depends(current_user), db: OrmSession = Depends(get_db)):
+    from .models import UserLlmConfig
+    row = db.get(UserLlmConfig, user.id)
+    cfg = get_cfg(db, user)
+    return {
+        "own": bool(row and row.api_key),
+        "api_key_masked": _mask(row.api_key) if row else "",
+        "base_url": (row.base_url if row and row.base_url else cfg.base_url),
+        "model": (row.model if row and row.model else cfg.model),
+        "vision_model": (row.vision_model if row and row.vision_model else cfg.vision_model),
+        "configured": cfg.configured,
+        "is_owner": is_owner(db, user),
+        "fallback_available": is_owner(db, user) and bool(settings.LLM_API_KEY),
+        "defaults": {
+            "base_url": settings.LLM_BASE_URL.rstrip("/"),
+            "model": settings.LLM_MODEL,
+            "vision_model": settings.LLM_VISION_MODEL,
+        },
+    }
+
+
+@router.put("/settings/llm")
+def put_llm_settings(
+    body: LlmCfgIn,
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    from .models import UserLlmConfig
+    row = db.get(UserLlmConfig, user.id)
+    if row is None:
+        row = UserLlmConfig(user_id=user.id)
+        db.add(row)
+    if body.api_key is not None:
+        row.api_key = body.api_key.strip() or None
+    if body.base_url is not None:
+        row.base_url = body.base_url.strip() or None
+    if body.model is not None:
+        row.model = body.model.strip() or None
+    if body.vision_model is not None:
+        row.vision_model = body.vision_model.strip() or None
+    db.commit()
+    return {"ok": True, "configured": bool(row.api_key)}
+
+
+@router.delete("/settings/llm")
+def delete_llm_settings(user: User = Depends(current_user), db: OrmSession = Depends(get_db)):
+    from .models import UserLlmConfig
+    row = db.get(UserLlmConfig, user.id)
+    if row:
+        db.delete(row)
+        db.commit()
+    return {"ok": True}
+
+
+@router.post("/settings/llm/test")
+async def test_llm_settings(user: User = Depends(current_user), db: OrmSession = Depends(get_db)):
+    cfg = get_cfg(db, user)
+    if not cfg.configured:
+        raise HTTPException(400, "还没有配置 API Key")
+    try:
+        reply = await llm.chat(cfg, [{"role": "user", "content": "只回复两个字：可用"}], max_tokens=20)
+        return {"ok": True, "reply": (reply or "").strip()[:50]}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"调用失败：{exc}") from exc
+
+
+# ==========================================================================
+# 身体数据趋势（按指标分别返回序列）
+# ==========================================================================
+@router.get("/body/trends")
+def body_trends(
+    days: int = Query(365, ge=7, le=3650),
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    cutoff = date.today() - timedelta(days=days)
+    rows = db.scalars(
+        select(BodyMetric)
+        .where(BodyMetric.user_id == user.id, BodyMetric.date >= cutoff)
+        .order_by(BodyMetric.date)
+    ).all()
+
+    metrics = {
+        "weight_kg": {"label": "体重", "unit": "kg"},
+        "bodyfat_pct": {"label": "体脂率", "unit": "%"},
+        "muscle_kg": {"label": "肌肉量", "unit": "kg"},
+        "waist_cm": {"label": "腰围", "unit": "cm"},
+        "hip_cm": {"label": "臀围", "unit": "cm"},
+        "chest_cm": {"label": "胸围", "unit": "cm"},
+        "arm_cm": {"label": "臂围", "unit": "cm"},
+        "thigh_cm": {"label": "腿围", "unit": "cm"},
+        "resting_hr": {"label": "静息心率", "unit": "bpm"},
+        "sleep_hours": {"label": "睡眠", "unit": "h"},
+    }
+
+    out = {}
+    for key, meta in metrics.items():
+        series = []
+        for r in rows:
+            v = getattr(r, key, None)
+            if v is not None:
+                series.append({"date": r.date.isoformat(), "value": float(v)})
+        if series:
+            vals = [p["value"] for p in series]
+            out[key] = {
+                **meta,
+                "series": series,
+                "count": len(series),
+                "first": vals[0],
+                "last": vals[-1],
+                "min": min(vals),
+                "max": max(vals),
+                "avg": round(sum(vals) / len(vals), 2),
+                "delta": round(vals[-1] - vals[0], 2),
+            }
+    return {"days": days, "metrics": out, "available": list(out.keys())}

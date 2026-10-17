@@ -9,8 +9,8 @@
     <title>GRF Coach - 全方位教练</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/assets/icon-192.png">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/assets/vendor/tailwind.js"></script>
+    <script src="/assets/vendor/chart.umd.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -23,7 +23,7 @@
             }
         }
     </script>
-    <link rel="stylesheet" href="/assets/style.css">
+    <link rel="stylesheet" href="/assets/style.css?v=20261017211824">
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased pb-20">
 
@@ -50,6 +50,7 @@
             <button type="submit" id="auth-btn" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition shadow-lg shadow-brand/30">登录</button>
             <div class="text-center mt-4">
                 <button type="button" id="auth-toggle" class="text-brand text-sm hover:underline">没有账号？注册一个</button>
+                <button type="button" id="btn-pk-login" class="mt-3 w-full border border-brand text-brand font-medium py-2.5 rounded-xl transition hover:bg-brand/5">用指纹 / 面容登录（Passkey）</button>
             </div>
             <p id="auth-error" class="text-red-400 text-sm text-center hidden"></p>
         </form>
@@ -71,44 +72,69 @@
         <main id="main-content" class="p-4 space-y-4">
             <!-- 首页 Dashboard -->
             <section id="tab-dashboard" class="tab-content space-y-4">
-                <!-- 问候区 -->
-                <div class="bg-gradient-to-br from-brand-dark to-brand rounded-2xl p-5 text-white shadow-lg relative overflow-hidden">
-                    <div class="relative z-10">
-                        <p class="text-sm opacity-90" id="dash-greeting">你好</p>
-                        <h2 class="text-2xl font-bold mt-1 mb-4" id="dash-goal">目标：减脂增肌</h2>
-                        <div class="flex gap-4">
-                            <div class="bg-white/20 rounded-lg p-2 flex-1 text-center backdrop-blur-sm">
-                                <div class="text-xs opacity-80">本周跑量</div>
-                                <div class="text-xl font-bold" id="dash-run-km">0 <span class="text-xs font-normal">km</span></div>
-                            </div>
-                            <div class="bg-white/20 rounded-lg p-2 flex-1 text-center backdrop-blur-sm">
-                                <div class="text-xs opacity-80">力量训练</div>
-                                <div class="text-xl font-bold" id="dash-strength">0 <span class="text-xs font-normal">次</span></div>
-                            </div>
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-bold">今日概览</h2>
+                    <button id="btn-quick-body" class="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center shadow-md active:scale-95 transition" title="记录今天">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+                    </button>
+                </div>
+                <div class="bg-gradient-to-br from-brand-dark to-brand rounded-2xl p-5 text-white shadow-lg">
+                    <p class="text-sm opacity-90" id="dash-greeting">你好</p>
+                    <h2 class="text-2xl font-bold mt-1 mb-4" id="dash-goal">目标：未设置</h2>
+                    <div class="flex gap-3">
+                        <div class="bg-white/20 rounded-lg p-2 flex-1 text-center">
+                            <div class="text-xs opacity-80">本周跑量</div>
+                            <div class="text-lg font-bold" id="dash-run-km">0 <span class="text-xs font-normal">km</span></div>
+                        </div>
+                        <div class="bg-white/20 rounded-lg p-2 flex-1 text-center">
+                            <div class="text-xs opacity-80">力量训练</div>
+                            <div class="text-lg font-bold" id="dash-strength">0 <span class="text-xs font-normal">次</span></div>
+                        </div>
+                        <div class="bg-white/20 rounded-lg p-2 flex-1 text-center">
+                            <div class="text-xs opacity-80">体重</div>
+                            <div class="text-lg font-bold" id="dash-weight">-- <span class="text-xs font-normal">kg</span></div>
+                        </div>
+                        <div class="bg-white/20 rounded-lg p-2 flex-1 text-center">
+                            <div class="text-xs opacity-80">体脂</div>
+                            <div class="text-lg font-bold" id="dash-bodyfat">-- <span class="text-xs font-normal">%</span></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- 核心数据卡 -->
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                        <div class="text-slate-400 text-xs mb-1">最新体重</div>
-                        <div class="text-2xl font-bold text-slate-700" id="dash-weight">-- <span class="text-sm font-normal text-slate-400">kg</span></div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-slate-600">数据趋势</h3>
+                        <select id="trend-range" class="text-xs border border-slate-300 rounded-lg px-2 py-1">
+                            <option value="30">30 天</option>
+                            <option value="90" selected>90 天</option>
+                            <option value="180">180 天</option>
+                            <option value="365">1 年</option>
+                        </select>
                     </div>
-                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                        <div class="text-slate-400 text-xs mb-1">体脂率</div>
-                        <div class="text-2xl font-bold text-slate-700" id="dash-bodyfat">-- <span class="text-sm font-normal text-slate-400">%</span></div>
-                    </div>
+                    <select id="trend-metric" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-3"></select>
+                    <div class="h-52 relative"><canvas id="trend-chart"></canvas></div>
+                    <div id="trend-empty" class="text-center text-xs text-slate-400 py-6 hidden"></div>
+                    <div id="trend-stats" class="mt-3"></div>
                 </div>
 
-                <!-- AI 教练入口 -->
-                <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-start gap-3 cursor-pointer hover:bg-indigo-100 transition" onclick="switchTab('coach')">
-                    <div class="bg-indigo-500 rounded-full p-2 text-white flex-shrink-0">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden" style="height:calc(100vh-300px);min-height:400px">
+                    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+                        <h3 class="text-sm font-bold text-slate-700">AI 教练</h3>
+                        <span id="dash-ai-status" class="text-xs font-medium text-slate-400">检测中...</span>
                     </div>
-                    <div>
-                        <h3 class="font-bold text-indigo-900 text-sm">问教练</h3>
-                        <p class="text-xs text-indigo-700 mt-1">综合跑步、力量、饮食数据，给你具体建议</p>
+                    <div class="flex gap-2 p-2 overflow-x-auto shrink-0 border-b border-slate-100">
+                        <button id="btn-weekly" class="shrink-0 bg-brand text-white text-xs px-3 py-1.5 rounded-lg font-medium">周报</button>
+                        <button id="btn-plan" class="shrink-0 bg-slate-100 text-slate-700 text-xs px-3 py-1.5 rounded-lg">训练计划</button>
+                        <button id="btn-run-advice" class="shrink-0 bg-slate-100 text-slate-700 text-xs px-3 py-1.5 rounded-lg">跑步分析</button>
+                        <button id="btn-diet-advice" class="shrink-0 bg-slate-100 text-slate-700 text-xs px-3 py-1.5 rounded-lg">饮食分析</button>
+                        <button id="btn-gen-report" class="shrink-0 bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg font-medium ml-auto">生成</button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto space-y-2 p-3" id="report-list">
+                        <div class="text-center text-xs text-slate-400 my-4">选择上方类型，点「生成」出报告</div>
+                    </div>
                     </div>
                 </div>
             </section>
@@ -131,19 +157,42 @@
             <section id="tab-strength" class="tab-content hidden space-y-4">
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-lg font-bold">力量训练</h2>
-                    <button class="text-brand text-sm font-medium" onclick="openTemplateSelector()">记录今日训练</button>
+                    <div class="flex items-center gap-3"><button class="text-slate-600 text-sm font-medium" onclick="openPlanManager()">管理计划</button><button class="text-brand text-sm font-medium" onclick="openTemplateSelector()">记录今日训练</button></div>
                 </div>
                 
-                <!-- 肌肉覆盖图 -->
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                    <h3 class="text-sm font-bold text-slate-600 mb-3">近 7 天肌肉容量</h3>
-                    <div class="h-48">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-slate-600">训练容量</h3>
+                        <div class="flex gap-1" id="trend-grain">
+                            <button data-grain="day" class="grain-btn text-xs px-2.5 py-1 rounded-lg bg-brand text-white">日</button>
+                            <button data-grain="week" class="grain-btn text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">周</button>
+                            <button data-grain="month" class="grain-btn text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">月</button>
+                            <button data-grain="year" class="grain-btn text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">年</button>
+                        </div>
+                    </div>
+                    <div class="h-44">
                         <canvas id="strength-chart"></canvas>
                     </div>
+                    <div id="trend-legend" class="text-xs text-slate-500 mt-2 text-center leading-relaxed"></div>
+                    <div id="trend-total" class="text-center text-xs text-slate-400 mt-2"></div>
                 </div>
                 
-                <div id="workout-list" class="space-y-3 mt-4">
-                    <!-- 历史记录 -->
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mt-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-slate-600">我的计划</h3>
+                        <button class="text-brand text-xs" onclick="openPlanManager()">编辑</button>
+                    </div>
+                    <div id="plan-preview" class="space-y-2 text-sm text-slate-500">加载中...</div>
+                </div>
+
+                <div class="mt-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-sm font-bold text-slate-600">今日记录</h3>
+                        <button id="btn-import-health2" class="text-xs text-brand">导入健康数据</button>
+                    </div>
+                    <div id="workout-list" class="space-y-3">
+                        <!-- 当天记录 -->
+                    </div>
                 </div>
             </section>
 
@@ -152,8 +201,8 @@
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-lg font-bold">营养与饮食</h2>
                     <label class="bg-brand text-white text-xs px-3 py-1.5 rounded-full cursor-pointer hover:bg-brand-dark transition">
-                        拍照识餐
-                        <input type="file" id="meal-upload" class="hidden" accept="image/*" capture="environment">
+                        拍照/选图识餐
+                        <input type="file" id="meal-upload" class="hidden" accept="image/*">
                     </label>
                 </div>
                 
@@ -185,25 +234,234 @@
                 </div>
             </section>
 
-            <!-- AI 教练视图 -->
-            <section id="tab-coach" class="tab-content hidden h-[calc(100vh-140px)] flex flex-col">
-                <div class="flex gap-2 mb-3 overflow-x-auto pb-1 shrink-0">
-                    <button id="btn-weekly" class="shrink-0 bg-brand text-white text-xs px-3 py-2 rounded-xl font-medium">📊 生成周报</button>
-                    <button id="btn-plan" class="shrink-0 bg-white border border-slate-200 text-slate-700 text-xs px-3 py-2 rounded-xl font-medium">📅 下周计划</button>
-                    <button id="btn-run-advice" class="shrink-0 bg-white border border-slate-200 text-slate-700 text-xs px-3 py-2 rounded-xl font-medium">🏃 跑步分析</button>
-                    <button id="btn-diet-advice" class="shrink-0 bg-white border border-slate-200 text-slate-700 text-xs px-3 py-2 rounded-xl font-medium">🍽 饮食调整</button>
+            <section id="tab-me" class="tab-content hidden space-y-4">
+                <div class="bg-gradient-to-br from-slate-700 to-slate-900 rounded-2xl p-5 text-white shadow-lg">
+                    <div class="flex items-center gap-3">
+                        <div class="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl font-bold" id="me-avatar">U</div>
+                        <div class="min-w-0">
+                            <div class="text-lg font-bold truncate" id="me-username">--</div>
+                            <div class="text-xs opacity-70 truncate" id="me-sub">--</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="flex-1 overflow-y-auto space-y-4 mb-4" id="chat-box">
-                    <div class="text-center text-xs text-slate-400 my-4">已接入你的全部训练数据</div>
-                    <!-- 对话气泡动态生成 -->
+
+                <button id="btn-open-settings" class="w-full bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-4 shadow-sm flex items-center justify-between transition">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-slate-100 rounded-lg p-2">
+                            <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        </div>
+                        <div class="text-left">
+                            <div class="text-sm font-bold text-slate-700">设置</div>
+                            <div class="text-xs text-slate-400 mt-0.5">AI Key、密码、Passkey</div>
+                        </div>
+                    </div>
+                    <svg class="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+
+                <button id="btn-open-profile" class="w-full bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-4 shadow-sm flex items-center justify-between transition">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-emerald-50 rounded-lg p-2">
+                            <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        </div>
+                        <div class="text-left">
+                            <div class="text-sm font-bold text-slate-700">基础资料</div>
+                            <div class="text-xs text-slate-400 mt-0.5">身高、年龄、目标、训练频次</div>
+                        </div>
+                    </div>
+                    <svg class="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+
+
+
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-600 mb-3">最近记录</h3>
+                    <div id="me-body-history" class="space-y-2 text-sm text-slate-500">加载中...</div>
                 </div>
-                <div class="bg-white p-2 rounded-2xl shadow-md border border-slate-100 flex items-center gap-2 sticky bottom-20">
-                    <input type="text" id="chat-input" placeholder="问教练问题..." class="flex-1 bg-transparent px-3 py-2 outline-none text-sm">
-                    <button id="chat-send" class="bg-brand text-white p-2 rounded-xl hover:bg-brand-dark transition">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-                    </button>
+
+
+
+            </section>
+
+            <section id="tab-profile" class="tab-content hidden space-y-4">
+                <div class="bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl p-5 text-white shadow-lg">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-lg font-bold">基础资料</h2>
+                        <button id="btn-back-profile" class="text-xs bg-white/20 px-3 py-1 rounded-lg">返回</button>
+                    </div>
+                    <p class="text-xs opacity-70 mt-1">影响 TDEE、营养计划与训练建议</p>
+                </div>
+<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-600 mb-3">基础资料</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-slate-500">性别</label>
+                            <select id="me-sex" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                                <option value="">未设置</option>
+                                <option value="male">男</option>
+                                <option value="female">女</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">出生年份</label>
+                            <input type="number" id="me-birth" placeholder="1995" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">身高 (cm)</label>
+                            <input type="number" step="0.1" id="me-height" placeholder="175" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">训练天数/周</label>
+                            <input type="number" id="me-days" placeholder="4" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">目标</label>
+                            <select id="me-goal" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                                <option value="">未设置</option>
+                                <option value="cut">减脂</option>
+                                <option value="recomp">增肌减脂</option>
+                                <option value="bulk">增肌</option>
+                                <option value="run">提升跑力</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">活动水平</label>
+                            <select id="me-activity" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                                <option value="">未设置</option>
+                                <option value="sedentary">久坐</option>
+                                <option value="light">轻度</option>
+                                <option value="moderate">中等</option>
+                                <option value="active">活跃</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">目标体重 (kg)</label>
+                            <input type="number" step="0.1" id="me-target-weight" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">目标体脂 (%)</label>
+                            <input type="number" step="0.1" id="me-target-bf" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="text-xs text-slate-500">饮食备注</label>
+                        <input id="me-diet" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="如：乳糖不耐受">
+                    </div>
+                    <div class="mt-3">
+                        <label class="text-xs text-slate-500">伤病备注</label>
+                        <input id="me-injury" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="如：右膝旧伤">
+                    </div>
+                    <button id="btn-save-profile" class="w-full mt-4 bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition">保存资料</button>
+                    <p id="me-profile-msg" class="text-center text-xs mt-2 hidden"></p>
                 </div>
             </section>
+        
+            <!-- 设置 -->
+            <section id="tab-settings" class="tab-content hidden space-y-4">
+                <div class="bg-gradient-to-br from-slate-700 to-slate-900 rounded-2xl p-5 text-white shadow-lg">
+                    <div class="flex justify-between items-center"><h2 class="text-lg font-bold">设置</h2><button id="btn-back-settings" class="text-xs bg-white/20 px-3 py-1 rounded-lg">返回</button></div>
+                    <p class="text-xs opacity-70 mt-1">账号、API Key 与安全选项</p>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-600 mb-1">Apple 健康数据导入</h3>
+                    <p class="text-xs text-slate-400 mb-3">上传 iPhone 健康 App 导出的 export.xml，自动读取体重、体脂、静息心率、睡眠和训练记录</p>
+                    <label class="block w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition text-center cursor-pointer text-sm">
+                        选择 export.xml 上传
+                        <input type="file" id="health-upload" class="hidden" accept=".xml">
+                    </label>
+                    <div id="health-msg" class="text-xs mt-2 hidden"></div>
+                    <details class="mt-3">
+                        <summary class="text-xs text-slate-400 cursor-pointer">怎么导出？</summary>
+                        <div class="text-xs text-slate-500 mt-2 leading-relaxed">
+                            1. iPhone 打开「健康」App<br>
+                            2. 点右上角头像 → 滑到底部「导出所有健康数据」<br>
+                            3. 会得到一个 export.zip，解压后里面是 export.xml<br>
+                            4. 在这里上传 export.xml 即可
+                        </div>
+                    </details>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <div class="flex justify-between items-center mb-1">
+                        <h3 class="text-sm font-bold text-slate-600">AI 设置</h3>
+                        <span id="ai-status" class="text-xs font-medium text-slate-400">检测中...</span>
+                    </div>
+                    <p id="ai-hint" class="text-xs text-slate-400 mb-3">填入你自己的 API Key 才能使用 AI 教练</p>
+                    <div class="space-y-2">
+                        <div>
+                            <label class="text-xs text-slate-500">API Key</label>
+                            <input type="password" id="ai-key" autocomplete="off" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="sk-...">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs text-slate-500">接口地址</label>
+                                <input id="ai-base" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">文本模型</label>
+                                <input id="ai-model" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">视觉模型（餐食识别）</label>
+                            <input id="ai-vmodel" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-3">
+                        <button id="btn-ai-save" class="flex-1 bg-brand hover:bg-brand-dark text-white font-bold py-2.5 rounded-xl transition text-sm">保存</button>
+                        <button id="btn-ai-test" class="flex-1 bg-slate-700 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl transition text-sm">测试</button>
+                        <button id="btn-ai-clear" class="px-4 bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2.5 rounded-xl transition text-sm">清除</button>
+                    </div>
+                    <p id="ai-msg" class="text-center text-xs mt-2 hidden"></p>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-600 mb-3">修改密码</h3>
+                    <div class="space-y-2">
+                        <div>
+                            <label class="text-xs text-slate-500">当前密码</label>
+                            <input type="password" id="pwd-old" autocomplete="off" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">新密码（至少 8 位）</label>
+                            <input type="password" id="pwd-new" autocomplete="off" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-500">确认新密码</label>
+                            <input type="password" id="pwd-new2" autocomplete="off" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                        </div>
+                    </div>
+                    <button id="btn-save-password" class="w-full mt-3 bg-slate-700 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition">更新密码</button>
+                    <p id="pwd-msg" class="text-center text-xs mt-2 hidden"></p>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-600 mb-1">生物识别登录（Passkey）</h3>
+                    <p class="text-xs text-slate-400 mb-3" id="pk-hint">绑定后用指纹 / 面容 / 设备 PIN 登录，免记密码</p>
+                    <div id="pk-list" class="space-y-1 mb-3 text-sm text-slate-500">加载中...</div>
+                    <button id="btn-pk-register" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition">+ 绑定此设备</button>
+                    <p id="pk-msg" class="text-center text-xs mt-2 hidden"></p>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-600 mb-3">账号</h3>
+                    <div class="flex justify-between items-center text-sm py-1">
+                        <span class="text-slate-500">用户名</span>
+                        <span id="set-username" class="font-medium">--</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm py-1">
+                        <span class="text-slate-500">AI 状态</span>
+                        <span id="set-llm" class="font-medium">--</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm py-1">
+                        <span class="text-slate-500">数据归属</span>
+                        <span class="font-medium text-slate-700">本机私有数据库</span>
+                    </div>
+                    <button id="btn-logout-3" class="w-full mt-4 bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 rounded-xl transition">退出登录</button>
+                </div>
+            </section>
+
         </main>
 
         <!-- 底部导航栏 -->
@@ -214,23 +472,53 @@
                     <span class="text-[10px]">首页</span>
                 </button>
                 <button class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400" data-target="run">
-                    <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                    <svg class="w-6 h-6 mb-1" viewBox="0 0 24 24" fill="currentColor"><path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"></path></svg>
                     <span class="text-[10px]">跑步</span>
                 </button>
                 <button class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400" data-target="strength">
-                    <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7c0-2.21-3.582-4-8-4s-8 1.79-8 4zm0 0c0 2.21 3.582 4 8 4s8-1.79 8-4"></path></svg>
+                    <svg class="w-6 h-6 mb-1" viewBox="0 0 24 24" fill="currentColor"><path d="M20.57 14.86L22 13.43 20.57 12 17 15.57 8.43 7 12 3.43 10.57 2 9.14 3.43 7.71 2 5.57 4.14 4.14 2.71 2.71 4.14l1.43 1.43L2 7.71l1.43 1.43L2 10.57 3.43 12 7 8.43 15.57 17 12 20.57 13.43 22l1.43-1.43L16.29 22l2.14-2.14 1.43 1.43 1.43-1.43-1.43-1.43L22 16.29l-1.43-1.43z"></path></svg>
                     <span class="text-[10px]">力量</span>
                 </button>
                 <button class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400" data-target="nutrition">
-                    <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                    <svg class="w-6 h-6 mb-1" viewBox="0 0 24 24" fill="currentColor"><path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"></path></svg>
                     <span class="text-[10px]">饮食</span>
                 </button>
-                <button class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400" data-target="coach">
-                    <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
-                    <span class="text-[10px]">教练</span>
+                <button class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400" data-target="me">
+                    <svg class="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    <span class="text-[10px]">我的</span>
                 </button>
             </div>
         </nav>
+    </div>
+
+    <!-- 弹窗：记录今天身体数据 -->
+    <div id="modal-body" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-5">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-lg">记录今天</h3>
+                <button id="btn-close-body" class="text-slate-400 text-sm px-2 py-1">关闭</button>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-slate-500">体重 (kg)</label>
+                    <input type="number" step="0.1" id="me-body-weight" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-500">体脂 (%)</label>
+                    <input type="number" step="0.1" id="me-body-bf" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-500">静息心率</label>
+                    <input type="number" id="me-body-hr" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-500">睡眠 (小时)</label>
+                    <input type="number" step="0.1" id="me-body-sleep" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                </div>
+            </div>
+            <button id="btn-save-body" class="w-full mt-4 bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition">记录</button>
+            <p id="me-body-msg" class="text-center text-xs mt-2 hidden"></p>
+        </div>
     </div>
 
     <!-- 弹窗：模板选择 -->
@@ -267,13 +555,98 @@
     </div>
 
     <!-- 弹窗：识别结果确认 -->
-    <div id="modal-meal" class="fixed inset-0 bg-black/50 z-50 hidden flex flex-col">
+    
+    <!-- 计划管理 -->
+    <div id="modal-plan-list" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[88vh] flex flex-col">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-lg">我的训练计划</h3>
+                <div class="flex items-center gap-2">
+                    <button onclick="newPlan()" class="bg-brand text-white text-xs px-3 py-1.5 rounded-full">+ 新建</button>
+                    <button class="text-slate-400" onclick="closeModal('modal-plan-list')">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1 space-y-3" id="plan-list"></div>
+        </div>
+    </div>
+
+    <!-- 计划编辑 -->
+    <div id="modal-plan-edit" class="fixed inset-0 bg-black/50 z-50 hidden flex flex-col">
+        <div class="bg-white w-full max-w-lg mt-auto rounded-t-2xl max-h-[92vh] flex flex-col h-full sm:h-auto">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+                <h3 class="font-bold text-lg text-brand-dark" id="plan-edit-title">编辑计划</h3>
+                <button class="text-slate-400" onclick="closeModal('modal-plan-edit')">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1 space-y-4">
+                <div>
+                    <label class="text-xs text-slate-500">计划名称</label>
+                    <input id="plan-name" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="例如：推日 / 上肢 A">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-slate-500">类型</label>
+                        <select id="plan-focus" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm">
+                            <option value="push">推（胸肩三头）</option>
+                            <option value="pull">拉（背后束二头）</option>
+                            <option value="legs">腿</option>
+                            <option value="upper">上肢</option>
+                            <option value="lower">下肢</option>
+                            <option value="full">全身</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-500">备注</label>
+                        <input id="plan-note" class="w-full border border-slate-300 rounded-lg px-3 py-2 mt-1 text-sm" placeholder="可选">
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-bold text-slate-600">动作列表</span>
+                        <button onclick="openExercisePicker()" class="text-brand text-xs font-medium">+ 添加动作</button>
+                    </div>
+                    <div id="plan-items" class="space-y-2"></div>
+                </div>
+            </div>
+            <div class="p-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+                <button id="btn-save-plan" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition">保存计划</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 动作选择 -->
+    <div id="modal-ex-picker" class="fixed inset-0 bg-black/60 z-[60] hidden flex flex-col">
+        <div class="bg-white w-full max-w-lg mt-auto rounded-t-2xl max-h-[85vh] flex flex-col h-full sm:h-auto">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold">选择动作</h3>
+                <button onclick="closeModal('modal-ex-picker')" class="text-slate-400">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-3 border-b border-slate-100">
+                <input id="ex-search" placeholder="搜索动作名..." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div class="p-3 overflow-y-auto flex-1 space-y-1" id="ex-list"></div>
+        </div>
+    </div>
+
+<div id="modal-meal" class="fixed inset-0 bg-black/50 z-50 hidden flex flex-col">
         <div class="bg-white w-full max-w-lg mt-auto rounded-t-2xl max-h-[90vh] flex flex-col h-full sm:h-auto sm:mt-auto">
             <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
                 <h3 class="font-bold text-lg text-brand-dark">识别结果确认</h3>
                 <button class="text-slate-400" onclick="document.getElementById('modal-meal').classList.add('hidden')">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
+            </div>
+            <div class="px-4 pt-3 flex items-center gap-2" id="meal-slot-pick">
+                <span class="text-xs text-slate-500 shrink-0">记到</span>
+                <button data-slot="breakfast" class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">早餐</button>
+                <button data-slot="lunch" class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">午餐</button>
+                <button data-slot="dinner" class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">晚餐</button>
+                <button data-slot="snack" class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">加餐</button>
             </div>
             <div class="p-4 overflow-y-auto flex-1 space-y-4" id="meal-result-items">
                 <!-- 动态 -->
@@ -284,6 +657,29 @@
         </div>
     </div>
 
-    <script src="/assets/app.js"></script>
+    <script src="/assets/app.js?v=20261018004324"></script>
+
+<script>
+// FORCE_SW_RESET: 清理旧 Service Worker 与缓存，避免新版页面被旧 SW 挡住
+(function () {
+    if (!('serviceWorker' in navigator)) return;
+    var BUILD = '20261017c';
+    try {
+        if (localStorage.getItem('grf_build') === BUILD) return;
+    } catch (e) { return; }
+    navigator.serviceWorker.getRegistrations().then(function (rs) {
+        return Promise.all(rs.map(function (r) { return r.unregister(); }));
+    }).then(function () {
+        if (window.caches && caches.keys) {
+            return caches.keys().then(function (ks) {
+                return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+            });
+        }
+    }).then(function () {
+        try { localStorage.setItem('grf_build', BUILD); } catch (e) {}
+        location.reload();
+    }).catch(function () {});
+})();
+</script>
 </body>
 </html>

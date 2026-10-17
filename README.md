@@ -1,225 +1,124 @@
-# RunFit
+# RunFit / GRF Coach
 
-> 自托管的全方位教练：**力量训练日志 + 跑步数据深度分析 + 营养建议**，三合一，并接入 AI 给出可执行反馈。
-
-一套跑在自己机器上的训练管理系统。数据不出本地，手机浏览器打开即用（可添加到主屏幕当 App）。
-
----
-
-## 为什么做这个
-
-市面上的训练 App 各管一摊：跑步的不管力量，记饮食的不看训练负荷，AI 助手又拿不到你的真实数据。
-RunFit 把三份数据放在同一张表里，让「营养师 + 跑步分析师 + 力量教练」同时看到全貌，再让 AI 基于真实数据给建议——而不是泛泛而谈。
-
-**核心主张：只依据数据说话。数据不足时明确告诉你缺什么，不编造。**
+自托管的「全方位教练」Web 应用：**力量训练日志 + 跑步数据分析 + 营养建议**，并用大模型给出可执行反馈。
+单机可跑，手机浏览器添加到主屏幕后像 App 一样使用（PWA）。
 
 ---
 
-## 功能
+## 主要功能
+
+### 首页（今日概览）
+- 本周跑量 / 力量训练次数 / 体重 / 体脂 四个关键指标
+- 右上角 **+** 弹窗录入今日身体数据（体重、体脂、静息心率、睡眠）
+- AI 教练面板：周报 / 训练计划 / 跑步分析 / 饮食分析四类报告
+  - 先选标签再点「生成」，不会点一下就跑模型
+  - 右上角实时显示 AI 配置状态；未配置时点一下直接告诉你去哪配
+
+### 跑步
+- 上传 WorkOutDoors / Apple Watch 导出的 TCX
+- 配速、心率区间、步频、有氧解耦、训练负荷（TRIMP/ACWR）分析
 
 ### 力量训练
-- **43 个动作库**，含主/次动肌肉映射，按推/拉/腿分类
-- **三分化模板**（推日 / 拉日 / 腿日），一键生成当天训练记录，只需填重量和 RPE
-- **肌肉容量热力图**：近 7 天各肌群组数 vs MEV/MAV/MRV 区间，直接告诉你哪块练少了、哪块过量
-- **计划生成器**：按目标（减脂增肌/增肌/减脂）和每周训练天数，输出上下肢或推拉腿分化方案
+- **训练容量柱状图，可切换 日 / 周 / 月 / 年**
+  - 日：横轴是肌群（胸/背/肩/手臂/腿/核心），不同颜色代表不同部位
+  - 周：周一…周日；月：第一周…第四周；年：1月…12月
+  - 按部位堆叠，图例带颜色块
+  - 没数据时显示友好空态提示，不是一片白
+- 今日记录卡片右上角「编辑」，直接覆盖重写当天记录（不会叠加）
+- 只显示当天记录，避免界面杂乱
 
-### 跑步数据
-支持从 Apple Watch 生态导入，解析器全部自己实现，不依赖第三方 SDK：
+### 饮食与营养
+- 按 **早餐 / 午餐 / 晚餐 / 加餐** 四个餐次分组展示
+- **拍照或从相册选图识餐**：
+  - 不再强制调用相机，可以直接选已有照片
+  - 上传前在手机上先压缩到长边 1280px / JPEG 0.82，避免大图上传超时
+  - 识别完可选择记到哪个餐次，一键确认入库
+- 今日宏量目标与实际对比
 
-| 格式 | 来源 | 说明 |
-|---|---|---|
-| `.tcx` | WorkOutDoors / Garmin / Apple | 主力格式，含心率、步频、速度扩展 |
-| `.gpx` | 通用 GPS 轨迹 | 自动从坐标算距离（Haversine） |
-| `export.xml` | Apple 健康全量导出 | 两遍流式解析，几百 MB 也不吃内存 |
-| `.csv` | WorkOutDoors / Strava 批量导出 | 批量导入历史 |
+### 我的 / 设置
+- 个人基础资料、身体数据历史（从首页 + 录入）
+- AI 设置：每个用户自己的 DeepSeek API Key / 模型 / 视觉模型
+- 修改密码、Passkey（指纹 / 面容）绑定与管理
+- 导入 Apple 健康 `export.xml`（体重、体脂、静息心率、睡眠）
 
-分析维度：
-- 配速、平均/最大心率、步频、爬升、卡路里
-- **心率区间分布**（Karvonen 五区，基于心率储备）
-- **每公里分段**，含分段配速/心率/步频/爬升
-- **训练负荷 TRIMP**（Banister）+ **ACWR**（急慢性负荷比），预警过度训练
-- **有氧解耦**（前半程 vs 后半程 心率/配速比），看有氧耐力是否撑得住
-
-### 营养
-- **TDEE 计算**：BMR（Mifflin-St Jeor）+ 活动系数 + 跑步/力量训练额外消耗
-- **宏量分配**：按目标给蛋白质/碳水/脂肪克数，区分训练日与休息日
-- **拍照识餐**：拍一张饭菜照片，AI 视觉模型识别食物、估算克数与宏量，直接写入当日记录
-- 体重趋势、体脂率、围度记录
-
-### AI 教练
-一个系统提示词里装三个人格（营养师 / 跑步分析师 / 力量教练），每次提问自动注入你的完整数据上下文：
-
-```
-用户档案 + 跑步数据 + 力量训练数据 + 营养数据
-                    ↓
-        DeepSeek (deepseek-flash)
-                    ↓
-   具体到数字和动作的建议（≤500 字）
-```
-
-- 支持流式输出（逐字显示）
-- 支持多轮对话，历史落库
-- 内置快捷提问：周复盘、下次训练建议、饮食调整
+### 体验细节
+- 底部导航：首页 / 跑步 / 力量 / 饮食 / 我的（导航图标为跑步小人、哑铃、餐具）
+- 下拉刷新
+- 全站中文错误提示：不再出现 `Failed to fetch` / `A request is already pending` / `[object Object]` 这类看不懂的英文
 
 ---
 
 ## 技术栈
 
-| 层 | 选型 | 理由 |
-|---|---|---|
-| 后端 | FastAPI + SQLAlchemy 2.x | 类型友好，自带 OpenAPI 文档 |
-| 数据库 | SQLite | 单用户场景零运维，文件即数据 |
-| 前端 | 原生 JS + Tailwind CDN + Chart.js | 无构建步骤，改完刷新即生效 |
-| 解析 | lxml（流式 iterparse） | Apple 导出文件动辄数百 MB |
-| 认证 | bcrypt + 服务端 Session | 单用户强密码，防公网乱入 |
-| AI | DeepSeek（OpenAI 兼容协议） | 国内直连，便宜，支持原生多模态识图 |
-| 内网穿透 | cloudflared | 免费，无需备案 |
+| 层 | 技术 |
+|---|---|
+| 后端 | FastAPI + Uvicorn |
+| 数据库 | SQLite（`grf.db`，单文件，无需额外部署） |
+| 前端 | 原生 HTML + Tailwind CSS + Chart.js（均本地托管，不走 CDN） |
+| 认证 | Cookie Session + WebAuthn / Passkey |
+| AI | DeepSeek（OpenAI 兼容协议），支持文本与多模态识图 |
+| 公网 | Cloudflare Tunnel（无需公网 IP） |
 
-**依赖极少**：无 Node、无 Webpack、无 Docker 必需项。Python 3.11+ 即可。
+> 重要：Chart.js 和 Tailwind 已改为本地文件（`web/assets/vendor/`）。
+> 之前用 CDN 在国内网络下经常加载不出来，直接导致柱状图一片白。
 
 ---
 
 ## 快速开始
 
-### 1. 安装依赖
-
 ```bash
+# 1. 安装依赖
 pip install -r requirements.txt
-```
 
-### 2. 配置
+# 2. 复制环境变量模板
+copy .env.example .env
+# 然后编辑 .env，至少填一个可用的 GRF_LLM_API_KEY（也可以登录后在「我的→设置」里填）
 
-```bash
-cp .env.example .env
-```
-
-编辑 `.env`，至少填一项：
-
-```ini
-GRF_LLM_API_KEY=sk-xxxxxxxx    # 不填则 AI 教练不可用，其他功能正常
-```
-
-> 没有 Key 也能用，只是「AI 教练」页面会提示未配置。
-
-### 3. 启动
-
-**Windows 一键（推荐）** —— 双击 `start.bat`，自动完成：清理旧进程 → 启动后端 → 起公网隧道 → 打印访问地址。
-
-**手动启动**：
-
-```bash
+# 3. 启动
 python -m uvicorn app.main:app --host 0.0.0.0 --port 7788
 ```
 
-打开 <http://127.0.0.1:7788>，首次访问注册账号（单用户模式，注册后自动关闭注册入口）。
+打开 <http://127.0.0.1:7788> 即可。
+
+### 公网访问（选做）
+```powershell
+.\setup_tunnel.ps1     # 创建并启动 cloudflared 隧道
+.\setup_domain.ps1     # 绑定自己的域名
+```
+细节见 `docs/DOMAIN.md`、`docs/域名接入-傻瓜版.md`。
 
 ---
 
-## 公网访问
-
-`start.bat` 会调用 cloudflared 生成临时地址（形如 `https://xxx.trycloudflare.com`），写入 `current_url.txt`。
-手机浏览器打开该地址 → 分享 → 添加到主屏幕，体验接近原生 App。
-
-**想要固定地址**，两条路：
-1. **自有域名 + cloudflared 命名隧道**（免费，推荐）
-   ```bash
-   cloudflared tunnel login
-   cloudflared tunnel create runfit
-   cloudflared tunnel route dns runfit runfit.yourdomain.com
-   cloudflared tunnel run --url http://127.0.0.1:7788 runfit
-   ```
-2. 直接买一个便宜域名（`.top` / `.xyz` 首年通常 ¥10 以内），配合同上。
-
-> 注意：`trycloudflare.com` 临时地址每次重启都会变。
-
----
-
-## 数据从哪来
-
-### 跑步
-- **WorkOutDoors**：App 内导出 `.tcx`（推荐，数据最全）
-- **Apple 健康**：iPhone 健康 App → 头像 → 导出所有健康数据 → 得到 `export.xml`（几百 MB，直接传，后端流式解析）
-
-### 力量
-网页填表：选模板 → 填每组重量和 RPE → 保存。也可自由添加动作。
-
-### 饮食
-拍照上传，或手动填描述 + 宏量。
-
----
-
-## 项目结构
+## 目录结构
 
 ```
-RunFit/
-├── app/
-│   ├── main.py            # 入口，静态文件挂载，启动时建表/播种
-│   ├── config.py          # .env 读取
-│   ├── db.py              # 引擎与会话
-│   ├── models.py          # ORM 模型
-│   ├── security.py        # bcrypt + session
-│   ├── api.py             # 全部 REST 路由
-│   ├── parsers.py         # TCX/GPX/Apple XML/CSV 解析（核心，673 行）
-│   ├── analytics.py       # 心率区间、TRIMP、ACWR、解耦
-│   ├── nutrition.py       # TDEE、宏量、周计划
-│   ├── strength.py        # 肌肉容量、MEV/MAV/MRV、计划生成
-│   ├── llm.py             # DeepSeek 客户端 + 系统提示词
-│   ├── exercises_seed.py  # 43 个动作 + 肌肉映射
-│   └── templates_seed.py  # 三分化模板
-├── web/
-│   ├── index.html         # 单页应用
-│   ├── assets/app.js      # 前端逻辑
-│   ├── assets/style.css
-│   ├── manifest.json      # PWA
-│   └── sw.js              # Service Worker
-├── tools/
-│   ├── e2e_test.py        # 端到端测试（41 项）
-│   ├── verify_llm.py      # AI 连通性验证（对话+流式+识图）
-│   └── make_test_tcx.py   # 生成合成 TCX
-├── start.bat / start.ps1  # 一键启动
-└── .env.example
+app/            后端（api / models / parsers / analytics / llm / security）
+web/            前端静态页（index.html、assets/app.js、sw.js、vendor/）
+docs/           部署与功能说明
+tools/          辅助脚本（测试 / 修复）
+data/           运行时数据（不入库）
+logs/           日志（不入库）
 ```
 
 ---
 
-## 测试
+## 常见问题
 
-```bash
-# 端到端（注册→档案→力量→跑步→营养→仪表盘→AI 上下文→静态资源）
-python tools/e2e_test.py
+**Q：AI 报告点「生成」没反应？**
+去「我的→设置→AI 设置」填入 API Key。首页 AI 教练卡片右上角会直接显示「未配置 API」。
 
-# AI 专项（对话 + 流式 + 识图，需先配好 Key）
-python tools/verify_llm.py
-```
+**Q：拍照识餐提示识别失败？**
+现在会先在手机上压缩照片，并且支持从相册选图。如果仍失败，界面会直接告诉你具体原因（Key 无效 / 超时 / 网络不通）。
 
-最近一次结果：**41 项全通过**。
-
----
-
-## 几个实现上的取舍
-
-**为什么自己写解析器，不用现成库？**
-Apple 的 `export.xml` 动辄 500MB+，普通 DOM 解析直接爆内存。用 `lxml.iterparse` 流式两遍（第一遍扫 workout，第二遍扫关联的 HR/距离样本），内存占用稳定在几十 MB。TCX 的命名空间各家写法不同，统一抹掉 namespace 再按裸标签匹配，比维护 prefix map 表可靠。
-
-**为什么用 SQLite 而不是 Postgres？**
-单用户、单机、数据量小（几年训练数据也就几十 MB）。SQLite 零配置、单文件备份、随时拷走。真要多用户再迁，SQLAlchemy 换连接串即可。
-
-**为什么前端不用框架？**
-整个前端约 600 行 JS。引入 React/Vue 带来的构建链和依赖升级成本，远大于它省下的代码量。Tailwind 走 CDN，改样式不用重启。
-
-**AI 上下文怎么控制长度？**
-不是把原始数据全塞进去。跑步只给周汇总 + 最近几次的关键指标，力量只给肌肉容量与容量趋势，营养只给目标与实际差值。压缩后约 3KB，既能给出具体建议，又不浪费 token。
+**Q：力量柱状图为什么空的？**
+两种可能：今天（或本周/月/年）确实没记录，会显示文字空态；或者浏览器缓存了旧版 `app.js`，强刷一次即可（版本号会自动更新）。
 
 ---
 
-## 隐私
+## 更新日志
 
-- 所有数据存在本地 `grf.db`
-- `.env`、数据库、上传文件均在 `.gitignore` 中，不会进仓库
-- 只有你主动点击「问教练」时，聚合后的数据摘要才会发给 DeepSeek
+详见 [CHANGELOG.md](./CHANGELOG.md)。
 
----
+## 许可证
 
-## License
-
-MIT
+MIT，见 [LICENSE](./LICENSE)。
