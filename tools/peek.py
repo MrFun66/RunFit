@@ -1,5 +1,6 @@
 ﻿import io
-s=io.open("web/assets/app.js",encoding="utf-8").read()
-print("LEN", len(s))
-print("=== 1840-2100 region ===")
-print(s[75000:79000])
+p=r"D:\GRF\app\sync_api.py"
+s=io.open(p,encoding="utf-8").read()
+i=s.find('def get_config')
+print("idx",i)
+print(s[i-200:i+1800] if i>0 else "NOT FOUND")

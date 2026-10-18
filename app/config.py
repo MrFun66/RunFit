@@ -40,6 +40,8 @@ class Settings:
     SECRET_KEY: str = os.getenv("GRF_SECRET_KEY", "")
     SESSION_COOKIE: str = "grf_session"
     SESSION_TTL_HOURS: int = int(os.getenv("GRF_SESSION_TTL_HOURS", "720"))  # 30 天
+    # 公网访问地址（手机端同步必须用这个，不能用 127.0.0.1）
+    PUBLIC_BASE_URL: str = os.getenv("GRF_PUBLIC_BASE_URL", "https://runfit.wenhh.top").rstrip("/")
     ALLOW_REGISTER: bool = os.getenv("GRF_ALLOW_REGISTER", "1") == "1"
 
     # --- LLM ---

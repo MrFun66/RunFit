@@ -1,11 +1,19 @@
-﻿import io,re
-h=io.open("web/index.html",encoding="utf-8").read()
-m=re.search(r'app\.js\?v=([0-9]+)', h)
-print("app.js?v =", m.group(1) if m else None)
-print("has trend-grain:", 'id="trend-grain"' in h)
-print("has strength-chart:", 'id="strength-chart"' in h)
-print("has modal-log:", 'id="modal-log"' in h)
-print("has modal-edit-workout:", 'modal-edit-workout' in h)
-sw=io.open("web/sw.js",encoding="utf-8").read()
-m2=re.search(r"CACHE_NAME\s*=\s*['\"]([^'\"]+)", sw)
-print("sw cache =", m2.group(1) if m2 else None)
+﻿import sqlite3
+con=sqlite3.connect(r"D:\GRF\grf.db"); cur=con.cursor()
+uid=19
+print("=== body_metrics ===")
+for r in cur.execute("select id,date,weight_kg,bodyfat_pct,resting_hr,sleep_hours,source from body_metrics where user_id=? order by id desc limit 5",(uid,)):
+    print(" ", r)
+print("=== health_samples (按指标统计) ===")
+for r in cur.execute("select metric,count(*),min(date),max(date) from health_samples where user_id=? group by metric order by 2 desc limit 20",(uid,)):
+    print(" ", r)
+print("=== health_samples 最近 8 条 ===")
+for r in cur.execute("select id,date,metric,value,unit,source,created_at from health_samples where user_id=? order by id desc limit 8",(uid,)):
+    print(" ", r)
+print("=== runs ===")
+for r in cur.execute("select id,name,start_time,distance_m,duration_s,source from runs where user_id=? order by id desc limit 5",(uid,)):
+    print(" ", r)
+print("=== last_sync ===")
+for r in cur.execute("select key,value from app_settings where key like 'last_sync%'"):
+    print(" ", r)
+con.close()

@@ -1,0 +1,16 @@
+﻿import sqlite3, shutil, datetime
+db = r"D:\GRF\grf.db"
+bak = db + ".bak_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+shutil.copy2(db, bak)
+print("BACKUP:", bak)
+con = sqlite3.connect(db); cur = con.cursor()
+print("--- users ---")
+for r in cur.execute("select id,username from users order by id"): print(r)
+print("--- hs user19 ---")
+for r in cur.execute("select id,date,metric,value,unit,source,created_at from health_samples where user_id=19 order by id"): print(r)
+print("--- body user19 last 6 ---")
+for r in cur.execute("select id,date,weight_kg,bodyfat_pct,resting_hr,sleep_hours,source,created_at from body_metrics where user_id=19 order by id desc limit 6"): print(r)
+print("--- runs user19 ---")
+for r in cur.execute("select id,name,start_time,distance_m,source from runs where user_id=19 order by id desc limit 6"): print(r)
+print("--- total hs ---", cur.execute("select count(*) from health_samples").fetchone())
+con.close()

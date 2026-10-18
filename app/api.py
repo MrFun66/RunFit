@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session as OrmSession
 
-from . import analytics, llm, nutrition, parsers, strength
+from . import analytics, foods, llm, nutrition, parsers, strength
+from . import foods as foods_mod
 from .llm_config import get_cfg, has_own_cfg, is_owner
 from .config import settings
 from .db import get_db
@@ -569,12 +570,17 @@ def create_workout(body: WorkoutIn, user: User = Depends(current_user), db: OrmS
 @router.get("/workouts")
 def list_workouts(
     limit: int = Query(60, ge=1, le=500),
+    day: str | None = Query(None, alias="date"),
     user: User = Depends(current_user),
     db: OrmSession = Depends(get_db),
 ):
-    rows = db.scalars(
-        select(Workout).where(Workout.user_id == user.id).order_by(Workout.date.desc()).limit(limit)
-    ).all()
+    stmt = select(Workout).where(Workout.user_id == user.id)
+    if day:
+        try:
+            stmt = stmt.where(Workout.date == date.fromisoformat(day))
+        except ValueError:
+            raise HTTPException(400, "日期格式应为 YYYY-MM-DD")
+    rows = db.scalars(stmt.order_by(Workout.date.desc(), Workout.id.desc()).limit(limit)).all()
     return {"items": [_workout_dict(w) for w in rows]}
 
 
@@ -765,6 +771,59 @@ def strength_trend(
     }
 
 
+@router.get("/strength/heatmap")
+def strength_heatmap(
+    weeks: int = Query(26, ge=4, le=104),
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    """训练日历热力图：返回最近 N 周每天的容量，用于 GitHub 风格贡献图。"""
+    today = date.today()
+    # 对齐到本周周一，向前推 weeks 周
+    start = today - timedelta(days=today.weekday()) - timedelta(weeks=weeks - 1)
+    workouts = db.scalars(
+        select(Workout)
+        .where(Workout.user_id == user.id, Workout.date >= start)
+        .order_by(Workout.date)
+    ).all()
+
+    ex_map = {e.id: e for e in db.scalars(select(Exercise)).all()}
+
+    per_day: dict[str, dict] = {}
+    for w in workouts:
+        key = w.date.isoformat()
+        node = per_day.setdefault(
+            key, {"date": key, "volume": 0.0, "sets": 0, "sessions": 0, "names": []}
+        )
+        node["sessions"] += 1
+        if w.name:
+            node["names"].append(w.name)
+        for st in w.sets:
+            if st.is_warmup:
+                continue
+            node["sets"] += 1
+            kg = st.weight_kg or 0.0
+            reps = st.reps or 0
+            node["volume"] += kg * reps
+
+    days = []
+    for k, v in per_day.items():
+        v["volume"] = round(v["volume"])
+        days.append(v)
+    days.sort(key=lambda x: x["date"])
+    max_vol = max([d["volume"] for d in days], default=0)
+    max_sets = max([d["sets"] for d in days], default=0)
+
+    return {
+        "weeks": weeks,
+        "start": start.isoformat(),
+        "end": today.isoformat(),
+        "max_volume": max_vol,
+        "max_sets": max_sets,
+        "days": days,
+    }
+
+
 @router.put("/workouts/{wid:int}")
 def update_workout(
     wid: int,
@@ -855,7 +914,14 @@ def nutrition_plan(user: User = Depends(current_user), db: OrmSession = Depends(
         prof["weight_kg"],
         prof["training_days_per_week"] or 4,
     )
-    return {"complete": True, "tdee": t, "weekly_km": round(weekly_km, 1), "plan": weekly}
+    per = weekly.get("per_day_type") or {}
+    return {
+        "complete": True,
+        "tdee": t,
+        "weekly_km": round(weekly_km, 1),
+        # 兼容旧前端：把 per_day_type 摊平到顶层
+        "plan": {**weekly, **per},
+    }
 
 
 class MealIn(BaseModel):
@@ -892,6 +958,37 @@ def list_meals(
         "carb_g": sum(m.carb_g or 0 for m in rows),
         "fat_g": sum(m.fat_g or 0 for m in rows),
     }
+    # 建议摄入：按当天是否训练取不同 day_type
+    target = None
+    try:
+        plan = nutrition_plan(user=user, db=db)
+        if plan.get("complete"):
+            wrows = db.scalars(
+                select(Workout).where(Workout.user_id == user.id, Workout.date == d)
+            ).all()
+            rrows = db.scalars(
+                select(Run).where(
+                    Run.user_id == user.id,
+                    func.date(Run.start_time) == d.isoformat(),
+                )
+            ).all()
+            day_type = "training" if wrows else ("long_run" if rrows else "rest")
+            # weekly_nutrition 返回 {"per_day_type": {...}, ...}
+            tp = plan["plan"].get("per_day_type") or plan["plan"]
+            key = "training" if day_type == "training" else ("long_run" if day_type == "long_run" else "rest")
+            target = tp.get(key) or tp.get("training")
+            if target:
+                target = {
+                    "day_type": day_type,
+                    "kcal": target["kcal"],
+                    "protein_g": target["protein_g"],
+                    "carb_g": target["carb_g"],
+                    "fat_g": target["fat_g"],
+                }
+    except Exception:
+        target = None
+
+    slots_done = sorted({m.slot for m in rows if m.slot})
     return {
         "date": d.isoformat(),
         "items": [
@@ -900,7 +997,73 @@ def list_meals(
             for m in rows
         ],
         "total": {k: round(v, 1) for k, v in total.items()},
+        "target": target,
+        "slots_done": slots_done,
+        "meals_complete": all(s in slots_done for s in ("breakfast", "lunch", "dinner")),
     }
+
+
+class MealFromFoodsIn(BaseModel):
+    date: date
+    slot: str | None = None
+    items: list[dict] = Field(default_factory=list)  # [{name, grams}]
+
+
+@router.post("/meals/from-foods")
+def add_meal_from_foods(
+    body: MealFromFoodsIn,
+    user: User = Depends(current_user),
+    db: OrmSession = Depends(get_db),
+):
+    """从食物库按克数直接记账。"""
+    if not body.items:
+        raise HTTPException(400, "没有选择食物")
+    names, kcal, p, c, f = [], 0.0, 0.0, 0.0, 0.0
+    for it in body.items:
+        name = str(it.get("name") or "").strip()
+        grams = float(it.get("grams") or 0)
+        if not name or grams <= 0:
+            continue
+        food = next((x for x in foods.FOODS if x["name"] == name), None)
+        if not food:
+            continue
+        n = foods.compute(food, grams)
+        names.append(f"{name} {round(grams)}g")
+        kcal += n["kcal"]; p += n["protein_g"]; c += n["carb_g"]; f += n["fat_g"]
+    if not names:
+        raise HTTPException(400, "没有可用的食物条目")
+
+    m = Meal(
+        user_id=user.id, date=body.date, slot=body.slot,
+        description="、".join(names),
+        kcal=round(kcal, 1), protein_g=round(p, 1),
+        carb_g=round(c, 1), fat_g=round(f, 1),
+    )
+    db.add(m)
+    db.commit()
+    return {"ok": True, "id": m.id}
+
+
+# ==========================================================================
+# 食物库（内置，可按 100g 换算任意克数）
+# ==========================================================================
+@router.get("/foods/calc")
+def calc_food(name: str = Query(...), grams: float = Query(...)):
+    """按名称 + 克数换算营养。"""
+    hit = None
+    for f in foods.FOODS:
+        if f["name"] == name:
+            hit = f
+            break
+    if hit is None:
+        cands = foods.search(name, 1)
+        if not cands:
+            raise HTTPException(404, "食物库里没有这个食物")
+        hit = cands[0]
+    out = foods.compute(hit, grams)
+    out["name"] = hit["name"]
+    out["grams"] = grams
+    return out
 
 
 @router.delete("/meals/{mid:int}")
@@ -911,6 +1074,30 @@ def delete_meal(mid: int, user: User = Depends(current_user), db: OrmSession = D
     db.delete(m)
     db.commit()
     return {"ok": True}
+
+@router.get("/foods")
+def list_foods(q: str = Query(""), limit: int = Query(80, ge=1, le=300)):
+    """内置食物库搜索（每 100g 营养），供前端挑选。"""
+    items = foods.search(q, limit)
+    return {"count": len(items), "items": items}
+
+
+class FoodCalcIn(BaseModel):
+    name: str
+    grams: float
+
+
+@router.post("/foods/calc")
+def calc_food(body: FoodCalcIn):
+    """按克数换算某个食物的营养（名称需精确匹配食物库）。"""
+    for f in foods.FOODS:
+        if f["name"] == body.name:
+            out = foods.compute(f, body.grams)
+            out["name"] = f["name"]
+            out["grams"] = body.grams
+            return out
+    raise HTTPException(404, "食物库中没有这个食物")
+
 
 
 # ==========================================================================
@@ -1376,12 +1563,15 @@ def duplicate_template(
 
 @router.delete("/templates/{tid:int}")
 def delete_template(tid: int, user: User = Depends(current_user), db: OrmSession = Depends(get_db)):
+    """删除模板。内置模板也可删除——删掉后不会再自动重建。"""
     t = db.get(WorkoutTemplate, tid)
-    if not t or t.user_id != user.id:
-        raise HTTPException(404, "模板不存在或为内置模板")
+    if not t:
+        raise HTTPException(404, "模板不存在")
+    if t.user_id is not None and t.user_id != user.id:
+        raise HTTPException(403, "无权删除他人的模板")
     db.delete(t)
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "builtin": bool(t.is_builtin)}
 
 
 class FromTemplateIn(BaseModel):
@@ -1465,6 +1655,9 @@ def _parse_reps_mid(reps: str | None) -> int | None:
 
 # ==========================================================================
 # 拍照识餐
+# ==========================================================================
+# ==========================================================================
+# 食物库（按 100g 记录营养，按份量换算）
 # ==========================================================================
 @router.post("/meals/photo")
 async def meal_photo(

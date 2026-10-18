@@ -1,5 +1,5 @@
 // Service Worker：离线兜底，缓存版本随构建变化
-const CACHE_NAME = 'grf-20261018004324';
+const CACHE_NAME = 'grf-20261018141029';
 const ASSETS = ['/', '/manifest.json', '/assets/style.css'];
 
 self.addEventListener('install', (e) => {

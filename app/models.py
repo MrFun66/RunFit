@@ -42,6 +42,8 @@ class User(Base):
     focus_muscles: Mapped[str | None] = mapped_column(Text)       # JSON list
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Shanghai")
     onboarded: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 自动同步令牌：供 Health Auto Export / 快捷指令 / Health Connect 桥接写入数据
+    sync_token: Mapped[str | None] = mapped_column(String(96), index=True)
 
 
 class Session(Base):
@@ -274,3 +276,16 @@ class UserLlmConfig(Base):
     model: Mapped[str | None] = mapped_column(String(64))
     vision_model: Mapped[str | None] = mapped_column(String(64))
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class HealthSample(Base):
+    """通用健康指标存储：任何指标都能收，不丢数据。"""
+    __tablename__ = "health_samples"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    metric: Mapped[str] = mapped_column(String(64), index=True)
+    value: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(32))
+    source: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

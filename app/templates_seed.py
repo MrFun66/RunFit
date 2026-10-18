@@ -51,8 +51,15 @@ _SPECS = [
 
 
 def seed_templates(db: OrmSession) -> int:
-    """首次启动写入内置三分化。已存在则跳过。"""
+    """首次启动写入内置三分化。一旦种过就永不再种（即使用户删掉了内置计划）。"""
+    from .models import AppSetting
+
+    flag = db.get(AppSetting, "builtin_templates_seeded")
+    if flag and flag.value == "1":
+        return 0
     if db.query(WorkoutTemplate).filter(WorkoutTemplate.is_builtin == True).count() > 0:  # noqa: E712
+        db.add(AppSetting(key="builtin_templates_seeded", value="1"))
+        db.commit()
         return 0
 
     # 名称 -> id，宽松匹配（处理动作库里叫法略有差异的情况）
@@ -85,5 +92,6 @@ def seed_templates(db: OrmSession) -> int:
             )
             idx += 1
         created += 1
+    db.add(AppSetting(key="builtin_templates_seeded", value="1"))
     db.commit()
     return created

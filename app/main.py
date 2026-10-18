@@ -15,7 +15,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .api import router as api_router
 from .config import BASE_DIR, settings
-from .db import init_db
+from .db import engine, init_db
+from .migrate import run_migrations
+from .sync_api import router as sync_router
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -29,6 +31,9 @@ STATIC_DIR = BASE_DIR / "web"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    _applied = run_migrations(engine)
+    if _applied:
+        log.info('schema migration: %s', ', '.join(_applied))
     # 内置动作库 + 三分化模板（幂等，已有则跳过）
     from .db import SessionLocal
     from .exercises_seed import seed_exercises
@@ -62,6 +67,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(sync_router)
 
 from .webauthn_auth import router as passkey_router  # noqa: E402
 app.include_router(passkey_router)

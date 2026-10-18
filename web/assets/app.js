@@ -217,8 +217,7 @@ function initFileUploads() {
 var _strengthGrain = 'day';
 
 async function loadStrength() {
-    await Promise.all([loadTodayWorkouts(), loadStrengthTrend()]);
-    loadPlanPreview();
+    await Promise.all([loadTodayWorkouts(), loadStrengthTrend(), loadHeatmap()]);
 }
 
 // 今日记录（只显示当天）
@@ -461,70 +460,396 @@ function initModals() {
 }
 
 // --- 营养 ---
-async function loadNutrition() {
-    // 目标
-    try {
-        const plan = await API.get('/nutrition/plan');
-        if (plan.complete) {
-            const t = plan.plan.training;
-            document.getElementById('mac-kcal').textContent = t.kcal;
-            document.getElementById('mac-p').textContent = t.protein_g + 'g';
-            document.getElementById('mac-c').textContent = t.carb_g + 'g';
-            document.getElementById('mac-f').textContent = t.fat_g + 'g';
-        }
-    } catch (e) { console.error(e); }
+function _setTxt(id, v) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = v;
+}
 
-    // 餐食列表
-    const list = document.getElementById('meal-list');
+var DAYTYPE_LABEL = { training: "\u8bad\u7ec3\u65e5", rest: "\u4f11\u606f\u65e5", long_run: "\u957f\u8dd1\u65e5" };
+
+async function loadNutrition() {
+    var list = document.getElementById("meal-list");
+    var data = null;
     try {
-        const data = await API.get('/meals');
-        if (!data.items.length) {
-            list.innerHTML = '<div class="text-center text-slate-400 text-sm py-4">今天还没有记录饮食。</div>';
-        } else {
-            var SLOTS = [
-                ['breakfast', '早餐'],
-                ['lunch', '午餐'],
-                ['dinner', '晚餐'],
-                ['snack', '加餐']
-            ];
-            var groups = {};
-            data.items.forEach(function (m) {
-                var k = m.slot || 'snack';
-                if (!groups[k]) groups[k] = [];
-                groups[k].push(m);
-            });
-            var html = '';
-            SLOTS.forEach(function (pair) {
-                var key = pair[0], label = pair[1];
-                var rows = groups[key] || [];
-                var kcal = 0;
-                rows.forEach(function (b) { kcal += (b.kcal || 0); });
-                html += '<div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">';
-                html += '<div class="px-4 py-2 bg-slate-50 flex justify-between items-center border-b border-slate-100">';
-                html += '<span class="text-sm font-bold text-slate-700">' + label + '</span>';
-                html += '<span class="text-xs text-slate-400">' + (rows.length ? Math.round(kcal) + ' kcal' : '未记录') + '</span>';
-                html += '</div>';
-                if (rows.length) {
-                    rows.forEach(function (m) {
-                        html += '<div class="px-4 py-2 flex justify-between items-start border-b border-slate-50 last:border-0">';
-                        html += '<div class="min-w-0 pr-2">';
-                        html += '<div class="text-sm text-slate-700 truncate">' + (m.description || '一餐') + '</div>';
-                        html += '<div class="text-xs text-slate-400 mt-0.5">P ' + (m.protein_g || 0) + ' / C ' + (m.carb_g || 0) + ' / F ' + (m.fat_g || 0) + '</div>';
-                        html += '</div>';
-                        html += '<div class="text-brand font-bold text-sm shrink-0">' + Math.round(m.kcal || 0) + '</div>';
-                        html += '</div>';
-                    });
-                } else {
-                    html += '<div class="px-4 py-3 text-xs text-slate-300">还没记录</div>';
-                }
-                html += '</div>';
-            });
-            list.innerHTML = html;
-        }
+        data = await API.get("/meals");
     } catch (e) {
-        list.innerHTML = '';
+        console.error(e);
+    }
+
+    // ---------- 1. 今日宏量：三餐未记录齐就不显示各项指数 ----------
+    var locked = document.getElementById("macro-locked");
+    var body = document.getElementById("macro-body");
+    var badge = document.getElementById("mac-badge");
+    var hasAny = !!(data && data.items && data.items.length);
+    var tgt = (data && data.target) || null;
+    var tot = (data && data.total) || { kcal: 0, protein_g: 0, carb_g: 0, fat_g: 0 };
+
+    // 只要记录过任意一餐就解锁显示（不要求三餐齐全）
+    if (hasAny && tgt) {
+        if (locked) locked.classList.add("hidden");
+        if (body) body.classList.remove("hidden");
+        var slotsDone = (data && data.slots_done) || [];
+        var MEAL_N = { breakfast: "\u65e9", lunch: "\u5348", dinner: "\u665a", snack: "\u52a0" };
+        if (badge) {
+            badge.textContent = "\u5df2\u8bb0 " + slotsDone.length + " \u9910";
+            badge.className = "text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full";
+        }
+        _setTxt("mac-kcal", Math.round(tot.kcal || 0));
+        _setTxt("mac-kcal-t", Math.round(tgt.kcal || 0));
+        _setTxt("mac-p", Math.round(tot.protein_g || 0));
+        _setTxt("mac-p-t", Math.round(tgt.protein_g || 0));
+        _setTxt("mac-c", Math.round(tot.carb_g || 0));
+        _setTxt("mac-c-t", Math.round(tgt.carb_g || 0));
+        _setTxt("mac-f", Math.round(tot.fat_g || 0));
+        _setTxt("mac-f-t", Math.round(tgt.fat_g || 0));
+        _setTxt("mac-daytype", DAYTYPE_LABEL[tgt.day_type] || "\u8bad\u7ec3\u65e5");
+    } else {
+        if (locked) locked.classList.remove("hidden");
+        if (body) body.classList.add("hidden");
+        if (badge) {
+            badge.textContent = hasAny ? "\u5f85\u8865\u8eab\u4f53\u6570\u636e" : "\u672a\u8bb0\u5f55";
+            badge.className = "text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full";
+        }
+    }
+
+    // ---------- 2. 餐食列表 ----------
+    if (!list) return;
+    if (!data || !data.items.length) {
+        list.innerHTML = '<div class="text-center text-slate-400 text-sm py-4">\u4eca\u5929\u8fd8\u6ca1\u6709\u8bb0\u5f55\u996e\u98df\u3002</div>';
+        return;
+    }
+    var SLOTS = [["breakfast", "\u65e9\u9910"], ["lunch", "\u5348\u9910"], ["dinner", "\u665a\u9910"], ["snack", "\u52a0\u9910"]];
+    var groups = {};
+    data.items.forEach(function (m) {
+        var k = m.slot || "snack";
+        if (!groups[k]) groups[k] = [];
+        groups[k].push(m);
+    });
+    var html = "";
+    SLOTS.forEach(function (pair) {
+        var key = pair[0], label = pair[1];
+        var rows = groups[key] || [];
+        var kcal = 0;
+        rows.forEach(function (b) { kcal += (b.kcal || 0); });
+        html += '<div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">';
+        html += '<div class="px-4 py-2 bg-slate-50 flex justify-between items-center border-b border-slate-100">';
+        html += '<span class="text-sm font-bold text-slate-700">' + label + '</span>';
+        html += '<span class="text-xs text-slate-400">' + (rows.length ? Math.round(kcal) + " kcal" : "\u672a\u8bb0\u5f55") + "</span>";
+        html += "</div>";
+        if (rows.length) {
+            rows.forEach(function (m) {
+                html += '<div class="px-4 py-2 flex justify-between items-start border-b border-slate-50 last:border-0">';
+                html += '<div class="min-w-0 pr-2">';
+                html += '<div class="text-sm text-slate-700">' + (m.description || "\u4e00\u9910") + "</div>";
+                html += '<div class="text-xs text-slate-400 mt-0.5">P ' + (m.protein_g || 0) + " / C " + (m.carb_g || 0) + " / F " + (m.fat_g || 0) + "</div>";
+                html += "</div>";
+                html += '<div class="flex items-center gap-2 shrink-0">';
+                html += '<span class="text-brand font-bold text-sm">' + Math.round(m.kcal || 0) + "</span>";
+                html += '<button data-del-meal="' + m.id + '" class="text-slate-300 hover:text-rose-500 text-xs">\u5220</button>';
+                html += "</div></div>";
+            });
+        } else {
+            html += '<div class="px-4 py-3 text-xs text-slate-300">\u8fd8\u6ca1\u8bb0\u5f55</div>';
+        }
+        html += "</div>";
+    });
+    list.innerHTML = html;
+    list.querySelectorAll("[data-del-meal]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+            var id = btn.getAttribute("data-del-meal");
+            if (!confirm("\u5220\u9664\u8fd9\u6761\u8bb0\u5f55\uff1f")) return;
+            try {
+                await API.delete("/meals/" + id);
+                loadNutrition();
+            } catch (e) { alert("\u5220\u9664\u5931\u8d25\uff1a" + e.message); }
+        });
+    });
+}
+
+// ======================= 食物库 =======================
+var _foodBasket = [];
+var _foodListCache = [];
+var _foodSlot = "breakfast";
+var _foodTimer = null;
+
+function _foodModal() { return document.getElementById("modal-food"); }
+
+function _renderFoodList(items) {
+    var box = document.getElementById("food-list");
+    if (!box) return;
+    _foodListCache = items || [];
+    if (!items || !items.length) {
+        box.innerHTML = '<div class="text-center text-slate-400 text-sm py-6">\u6ca1\u627e\u5230\uff0c\u6362\u4e2a\u5173\u952e\u8bcd\u8bd5\u8bd5</div>';
+        return;
+    }
+    var html = "";
+    items.forEach(function (f, i) {
+        html += '<button data-food-idx="' + i + '" class="w-full text-left px-3 py-2.5 rounded-lg active:bg-slate-100 border-b border-slate-50 last:border-0 flex justify-between items-center">';
+        html += '<div class="min-w-0"><div class="text-sm text-slate-700 truncate">' + f.name + "</div>";
+        html += '<div class="text-[11px] text-slate-400">\u6bcf100g ' + f.kcal + " kcal \u00b7 P" + f.p + " C" + f.c + " F" + f.f + "</div></div>";
+        html += '<span class="text-[11px] text-brand font-bold shrink-0 ml-2">\u4e00\u4efd ' + f.unit_g + "g \u203a</span>";
+        html += "</button>";
+    });
+    box.innerHTML = html;
+    box.querySelectorAll("[data-food-idx]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var f = items[parseInt(btn.getAttribute("data-food-idx"), 10)];
+            if (f) openPortion(f);
+        });
+    });
+}
+
+// ===== \u4efd\u91cf\u9762\u677f\uff08\u5b66 Keep\uff09 =====
+var _portionFood = null;
+
+function openPortion(food) {
+    _portionFood = food;
+    var list = document.getElementById("food-list");
+    var wrap = document.getElementById("food-basket-wrap");
+    var pane = document.getElementById("food-portion");
+    var srch = document.getElementById("food-search");
+    if (list) list.classList.add("hidden");
+    if (wrap) wrap.classList.add("hidden");
+    if (srch) srch.parentElement.classList.add("hidden");
+    if (pane) pane.classList.remove("hidden");
+
+    _setTxt("portion-name", food.name);
+    _setTxt("portion-per100", "\u6bcf100g " + food.kcal + " kcal \u00b7 P" + food.p + " C" + food.c + " F" + food.f);
+    var inp = document.getElementById("portion-grams");
+    if (inp) inp.value = food.unit_g;
+
+    // \u9884\u8bbe\u4efd\u91cf
+    var box = document.getElementById("portion-presets");
+    if (box) {
+        var presets = [food.unit_g, food.unit_g * 2, 100, 150];
+        var seen = {};
+        var arr = [];
+        presets.forEach(function (g) {
+            var v = Math.round(g);
+            if (v > 0 && !seen[v]) { seen[v] = 1; arr.push(v); }
+        });
+        box.innerHTML = arr.map(function (g) {
+            return '<button data-preset="' + g + '" class="px-3 py-1.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">' + g + "g</button>";
+        }).join("");
+        box.querySelectorAll("[data-preset]").forEach(function (b) {
+            b.addEventListener("click", function () {
+                if (inp) inp.value = b.getAttribute("data-preset");
+                _updatePortionPreview();
+            });
+        });
+    }
+    _updatePortionPreview();
+}
+
+function closePortion() {
+    var list = document.getElementById("food-list");
+    var wrap = document.getElementById("food-basket-wrap");
+    var pane = document.getElementById("food-portion");
+    var srch = document.getElementById("food-search");
+    if (pane) pane.classList.add("hidden");
+    if (list) list.classList.remove("hidden");
+    if (wrap) wrap.classList.remove("hidden");
+    if (srch) srch.parentElement.classList.remove("hidden");
+    _portionFood = null;
+}
+
+function _portionGrams() {
+    var inp = document.getElementById("portion-grams");
+    var v = inp ? parseFloat(inp.value) : 0;
+    if (isNaN(v) || v <= 0) v = 1;
+    return Math.min(v, 3000);
+}
+
+function _updatePortionPreview() {
+    if (!_portionFood) return;
+    var g = _portionGrams();
+    var k = g / 100;
+    _setTxt("pv-kcal", Math.round(_portionFood.kcal * k));
+    _setTxt("pv-p", Math.round(_portionFood.p * k));
+    _setTxt("pv-c", Math.round(_portionFood.c * k));
+    _setTxt("pv-f", Math.round(_portionFood.f * k));
+}
+
+function initPortionPanel() {
+    var pane = document.getElementById("food-portion");
+    if (!pane || pane._bound) return;
+    pane._bound = true;
+
+    var inp = document.getElementById("portion-grams");
+    if (inp) inp.addEventListener("input", _updatePortionPreview);
+
+    var minus = document.getElementById("portion-minus");
+    if (minus) minus.addEventListener("click", function () {
+        if (inp) inp.value = Math.max(1, Math.round(_portionGrams() - 10));
+        _updatePortionPreview();
+    });
+    var plus = document.getElementById("portion-plus");
+    if (plus) plus.addEventListener("click", function () {
+        if (inp) inp.value = Math.round(_portionGrams() + 10);
+        _updatePortionPreview();
+    });
+
+    var back = document.getElementById("portion-back");
+    if (back) back.addEventListener("click", closePortion);
+
+    var add = document.getElementById("portion-add");
+    if (add) add.addEventListener("click", function () {
+        if (!_portionFood) return;
+        var g = _portionGrams();
+        _addToBasket({
+            name: _portionFood.name, unit_g: g,
+            kcal: _portionFood.kcal, p: _portionFood.p, c: _portionFood.c, f: _portionFood.f
+        }, g);
+        closePortion();
+        _toast("\u5df2\u52a0\u5165\uff1a" + _portionFood.name + " " + Math.round(g) + "g");
+    });
+}
+
+function _toast(msg) {
+    var t = document.createElement("div");
+    t.className = "fixed left-1/2 -translate-x-1/2 bottom-24 bg-slate-800 text-white text-xs px-4 py-2 rounded-full z-[60] shadow-lg";
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.style.opacity = "0"; t.style.transition = "opacity .3s"; }, 1200);
+    setTimeout(function () { t.remove(); }, 1600);
+}
+
+function _addToBasket(food, grams) {
+    var g = (grams === undefined || grams === null) ? food.unit_g : Math.max(1, Math.round(grams));
+    var exist = null;
+    for (var i = 0; i < _foodBasket.length; i++) {
+        if (_foodBasket[i].name === food.name) { exist = _foodBasket[i]; break; }
+    }
+    if (exist) {
+        exist.grams = Math.round(exist.grams + g);
+    } else {
+        _foodBasket.push({ name: food.name, grams: g, unit_g: food.unit_g, kcal: food.kcal, p: food.p, c: food.c, f: food.f });
+    }
+    _renderBasket();
+}
+
+function _renderBasket() {
+    var box = document.getElementById("food-basket");
+    var sum = document.getElementById("food-sum");
+    if (!box) return;
+    if (!_foodBasket.length) {
+        box.innerHTML = '<div class="text-[11px] text-slate-300">\u8fd8\u6ca1\u9009\u98df\u7269\uff0c\u70b9\u4e0a\u9762\u7684\u5217\u8868\u52a0\u5165</div>';
+        if (sum) sum.textContent = "";
+        return;
+    }
+    var tk = 0, tp = 0, tc = 0, tf = 0;
+    var html = "";
+    _foodBasket.forEach(function (it, i) {
+        var k = it.grams / 100;
+        var kcal = it.kcal * k, p = it.p * k, c = it.c * k, f = it.f * k;
+        tk += kcal; tp += p; tc += c; tf += f;
+        html += '<div class="flex items-center gap-2 text-[11px] text-slate-600">';
+        html += '<span class="truncate flex-1">' + it.name + "</span>";
+        html += '<input data-g="' + i + '" type="number" min="1" step="10" value="' + Math.round(it.grams) + '" class="w-16 border border-slate-200 rounded px-1 py-0.5 text-right">';
+        html += '<span class="text-slate-400">g</span>';
+        html += '<span class="w-12 text-right text-slate-500">' + Math.round(kcal) + "</span>";
+        html += '<button data-rm="' + i + '" class="text-slate-300 hover:text-rose-500">\u00d7</button>';
+        html += "</div>";
+    });
+    box.innerHTML = html;
+    if (sum) sum.textContent = Math.round(tk) + " kcal \u00b7 P" + Math.round(tp) + " C" + Math.round(tc) + " F" + Math.round(tf);
+
+    box.querySelectorAll("[data-g]").forEach(function (inp) {
+        inp.addEventListener("change", function () {
+            var i = parseInt(inp.getAttribute("data-g"), 10);
+            var v = parseFloat(inp.value);
+            if (_foodBasket[i]) _foodBasket[i].grams = isNaN(v) || v <= 0 ? 1 : v;
+            _renderBasket();
+        });
+    });
+    box.querySelectorAll("[data-rm]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            var i = parseInt(btn.getAttribute("data-rm"), 10);
+            _foodBasket.splice(i, 1);
+            _renderBasket();
+        });
+    });
+}
+
+async function _searchFoods(q) {
+    try {
+        var data = await API.get("/foods?q=" + encodeURIComponent(q || ""));
+        _renderFoodList(data.items || []);
+    } catch (e) {
+        console.error(e);
     }
 }
+
+function openFoodModal() {
+    var m = _foodModal();
+    if (!m) return;
+    _foodBasket = [];
+    _renderBasket();
+    m.classList.remove("hidden");
+    _searchFoods("");
+    var inp = document.getElementById("food-search");
+    if (inp) inp.value = "";
+}
+
+function initFoodModal() {
+    var m = _foodModal();
+    if (!m || m._bound) return;
+    m._bound = true;
+
+    var openBtn = document.getElementById("btn-open-food");
+    if (openBtn) openBtn.addEventListener("click", openFoodModal);
+
+    var closeBtn = document.getElementById("btn-close-food");
+    if (closeBtn) closeBtn.addEventListener("click", function () { m.classList.add("hidden"); });
+
+    var inp = document.getElementById("food-search");
+    if (inp) {
+        inp.addEventListener("input", function () {
+            clearTimeout(_foodTimer);
+            var q = inp.value;
+            _foodTimer = setTimeout(function () { _searchFoods(q); }, 220);
+        });
+    }
+
+    m.querySelectorAll("#food-slot-pick [data-slot]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            _foodSlot = btn.getAttribute("data-slot");
+            m.querySelectorAll("#food-slot-pick [data-slot]").forEach(function (b) {
+                b.className = "text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600";
+            });
+            btn.className = "text-xs px-2.5 py-1 rounded-lg bg-brand text-white font-bold";
+        });
+    });
+
+    var save = document.getElementById("btn-save-food");
+    if (save) {
+        save.addEventListener("click", async function () {
+            if (!_foodBasket.length) { alert("\u5148\u9009\u4e00\u4e9b\u98df\u7269"); return; }
+            save.disabled = true;
+            try {
+                var today = new Date();
+                var iso = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+                await API.post("/meals/from-foods", {
+                    date: iso,
+                    slot: _foodSlot,
+                    items: _foodBasket.map(function (it) { return { name: it.name, grams: it.grams }; })
+                });
+                m.classList.add("hidden");
+                loadNutrition();
+            } catch (e) {
+                alert("\u8bb0\u5f55\u5931\u8d25\uff1a" + e.message);
+            } finally {
+                save.disabled = false;
+            }
+        });
+    }
+
+    var first = m.querySelector("#food-slot-pick [data-slot='breakfast']");
+    if (first) first.className = "text-xs px-2.5 py-1 rounded-lg bg-brand text-white font-bold";
+}
+
+document.addEventListener("DOMContentLoaded", function () { initFoodModal(); initPortionPanel(); });
+if (document.readyState !== "loading") { initFoodModal(); initPortionPanel(); }
 
 // 拍照 / 选图 识餐
 var _mealImageUrl = null;
@@ -797,7 +1122,7 @@ async function openPlanManager() {
                     <div class="flex items-center gap-2 shrink-0 ml-2">
                         <button onclick="editPlan(${t.id})" class="text-brand text-xs font-medium">编辑</button>
                         <button onclick="duplicatePlan(${t.id})" class="text-slate-500 text-xs">复制</button>
-                        ${t.is_builtin ? '' : `<button onclick="removePlan(${t.id})" class="text-rose-500 text-xs">删除</button>`}
+                        <button onclick="removePlan(${t.id})" class="text-rose-500 text-xs">删除</button>
                     </div>
                 </div>
                 <div class="mt-2 text-xs text-slate-500 leading-relaxed">
@@ -862,8 +1187,7 @@ async function removePlan(id) {
     try {
         await API.delete(`/templates/${id}`);
         await openPlanManager();
-        loadPlanPreview();
-    } catch (e) { alert('删除失败：' + e.message); }
+        } catch (e) { alert('删除失败：' + e.message); }
 }
 
 
@@ -1069,8 +1393,7 @@ async function savePlan() {
         }
         closeModal('modal-plan-edit');
         editingPlan = null;
-        loadPlanPreview();
-        loadStrength();
+            loadStrength();
     } catch (e) {
         alert('保存失败：' + e.message);
     } finally {
@@ -1653,6 +1976,9 @@ function _setMsg(elId, text, ok) {
 }
 
 async function loadSettings() {
+    if (typeof loadSyncToken === 'function') loadSyncToken();
+    if (typeof initAutoSync === 'function') initAutoSync();
+
     try {
         var p = await API.get('/profile');
         var u = document.getElementById('set-username');
@@ -2272,4 +2598,495 @@ function friendlyError(e) {
         return '服务器暂时忙，请稍后重试';
     }
     return m || '未知错误';
+}
+
+// ==================================================
+// 自动同步（Health Auto Export / 快捷指令 / Health Connect）
+// ==================================================
+var _syncCfg = null;
+
+function _syncMsg(text, ok) {
+    var el = document.getElementById('sync-msg');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('hidden', 'text-emerald-600', 'text-rose-500', 'text-slate-500');
+    el.classList.add(ok ? 'text-emerald-600' : 'text-rose-500');
+}
+
+function _renderSyncBox(cfg) {
+    var box = document.getElementById('sync-box');
+    var ep = document.getElementById('sync-endpoint');
+    var tk = document.getElementById('sync-token');
+    if (!box || !ep || !tk) return;
+    if (!cfg || !cfg.token) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    ep.textContent = cfg.endpoint || '';
+    tk.textContent = cfg.token || '';
+}
+
+async function loadSyncToken() {
+    if (typeof initSyncCard === 'function') initSyncCard();
+}
+
+function _copyText(text, btn) {
+    function done() {
+        var old = btn.textContent;
+        btn.textContent = '已复制';
+        setTimeout(function () { btn.textContent = old; }, 1500);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {});
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+    }
+}
+
+function initAutoSync() {
+    var btnGet = document.getElementById('btn-sync-get');
+    var btnPing = document.getElementById('btn-sync-ping');
+    var btnRotate = document.getElementById('btn-sync-rotate');
+    var btnEp = document.getElementById('btn-copy-endpoint');
+    var btnTk = document.getElementById('btn-copy-token');
+
+    if (btnGet && !btnGet._bound) {
+        btnGet._bound = true;
+        btnGet.addEventListener('click', async function () {
+            btnGet.disabled = true;
+            btnGet.textContent = '生成中...';
+            try {
+                var d = await API.get('/sync/token');
+                _syncCfg = d;
+                _renderSyncBox(d);
+                _syncMsg('已生成，把地址和令牌填到 iPhone 的 Health Auto Export 里', true);
+            } catch (e) {
+                _syncMsg(friendlyError(e), false);
+            } finally {
+                btnGet.disabled = false;
+                btnGet.textContent = '生成同步令牌';
+            }
+        });
+    }
+
+    if (btnPing && !btnPing._bound) {
+        btnPing._bound = true;
+        btnPing.addEventListener('click', async function () {
+            if (!_syncCfg || !_syncCfg.token) {
+                _syncMsg('先点「生成同步令牌」', false);
+                return;
+            }
+            btnPing.disabled = true;
+            try {
+                var res = await fetch('/api/sync/ping', {
+                    headers: { 'Authorization': 'Bearer ' + _syncCfg.token }
+                });
+                var d = await res.json().catch(function () { return {}; });
+                if (res.ok) {
+                    _syncMsg('连接正常：' + (d.message || '令牌有效'), true);
+                    } else {
+                    _syncMsg('测试失败：' + (d.detail || res.status), false);
+                }
+            } catch (e) {
+                _syncMsg(friendlyError(e), false);
+            } finally {
+                btnPing.disabled = false;
+            }
+        });
+    }
+
+    if (btnRotate && !btnRotate._bound) {
+        btnRotate._bound = true;
+        btnRotate.addEventListener('click', async function () {
+            if (!confirm('重置后旧令牌立即失效，手机端需要重新填写。确定吗？')) return;
+            try {
+                var d = await API.post('/sync/token/rotate', {});
+                _syncCfg = { token: d.token, endpoint: (_syncCfg && _syncCfg.endpoint) || '' };
+                _renderSyncBox(_syncCfg);
+                _syncMsg('已重置，请到 iPhone 端更新令牌', true);
+            } catch (e) {
+                _syncMsg(friendlyError(e), false);
+            }
+        });
+    }
+
+    var btnInstall = document.getElementById('btn-install-shortcut');
+    if (btnInstall && !btnInstall._bound) {
+        btnInstall._bound = true;
+        btnInstall.addEventListener('click', installShortcut);
+    }
+
+    if (btnEp && !btnEp._bound) {
+        btnEp._bound = true;
+        btnEp.addEventListener('click', function () {
+            var t = document.getElementById('sync-endpoint');
+            if (t) _copyText(t.textContent, btnEp);
+        });
+    }
+    if (btnTk && !btnTk._bound) {
+        btnTk._bound = true;
+        btnTk.addEventListener('click', function () {
+            var t = document.getElementById('sync-token');
+            if (t) _copyText(t.textContent, btnTk);
+        });
+    }
+}
+
+// ==========================================================
+// 训练日历热力图
+// ==========================================================
+var _heatData = null;
+var _heatSelected = null;
+
+function _heatLevel(vol, maxVol, sets, maxSets) {
+    // 没有重量数据时退化为按组数着色，保证热力图仍然有信息
+    if (!vol && sets) { vol = sets; maxVol = maxSets || sets; }
+    if (!vol) return 0;
+    if (!maxVol) return 1;
+    var r = vol / maxVol;
+    if (r >= 0.75) return 4;
+    if (r >= 0.5) return 3;
+    if (r >= 0.25) return 2;
+    return 1;
+}
+
+var _HEAT_COLORS = ['#f1f5f9', '#bbf7d0', '#4ade80', '#16a34a', '#14532d'];
+
+function _ymd(d) {
+    var m = d.getMonth() + 1;
+    var dd = d.getDate();
+    return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (dd < 10 ? '0' + dd : dd);
+}
+
+function renderHeatmap(data) {
+    var box = document.getElementById('heatmap');
+    if (!box) return;
+    _heatData = data;
+    var days = data.days || [];
+    var map = {};
+    days.forEach(function (d) { map[d.date] = d; });
+
+    var maxVol = data.max_volume || 0;
+    var start = new Date(data.start + 'T00:00:00');
+    var end = new Date(data.end + 'T00:00:00');
+
+    // 对齐到周日开始
+    var cursor = new Date(start);
+    cursor.setDate(cursor.getDate() - cursor.getDay());
+
+    var cols = [];
+    var todayStr = _ymd(new Date());
+    var monthLabels = [];
+
+    while (cursor <= end) {
+        var col = [];
+        for (var w = 0; w < 7; w++) {
+            var cur = new Date(cursor);
+            cur.setDate(cur.getDate() + w);
+            var key = _ymd(cur);
+            var inRange = cur >= start && cur <= end;
+            var rec = map[key];
+            var vol = rec ? rec.volume : 0;
+            var sts = rec ? rec.sets : 0;
+            var lv = inRange ? _heatLevel(vol, maxVol, sts, data.max_sets) : -1;
+            col.push({ date: key, vol: vol, level: lv, inRange: inRange, rec: rec });
+        }
+        cols.push(col);
+        // 记录每月首次出现的列，用于月份标签
+        var firstOfMonth = null;
+        for (var k = 0; k < 7; k++) {
+            var c2 = cols[cols.length - 1][k];
+            if (c2.inRange && c2.date.slice(8) === '01') { firstOfMonth = c2.date.slice(5, 7); break; }
+        }
+        if (firstOfMonth) monthLabels.push({ col: cols.length - 1, label: parseInt(firstOfMonth, 10) + '月' });
+        cursor.setDate(cursor.getDate() + 7);
+    }
+
+    // 月份标签行
+    var html = '<div class="flex gap-[3px] mb-1 h-3">';
+    var labelMap = {};
+    monthLabels.forEach(function (m) { labelMap[m.col] = m.label; });
+    for (var ci = 0; ci < cols.length; ci++) {
+        html += '<div class="w-3 text-[9px] text-slate-400 shrink-0">' + (labelMap[ci] || '') + '</div>';
+    }
+    html += '</div>';
+
+    // 格子
+    html += '<div class="flex gap-[3px]">';
+    for (var c = 0; c < cols.length; c++) {
+        html += '<div class="flex flex-col gap-[3px]">';
+        for (var r = 0; r < 7; r++) {
+            var cell = cols[c][r];
+            if (cell.level < 0) {
+                html += '<div class="w-3 h-3 rounded-sm"></div>';
+                continue;
+            }
+            var bg = _HEAT_COLORS[cell.level] || _HEAT_COLORS[0];
+            var tip = cell.date + (cell.vol ? ' · ' + cell.vol.toLocaleString() + ' kg' : (cell.rec && cell.rec.sets ? ' · ' + cell.rec.sets + ' 组' : ' · 无训练'));
+            var ring = cell.date === todayStr ? ' ring-1 ring-brand' : '';
+            var sel = (_heatSelected === cell.date) ? ' outline outline-1 outline-slate-500' : '';
+            html += '<div class="w-3 h-3 rounded-sm cursor-pointer' + ring + sel + '" ' +
+                    'style="background:' + bg + '" title="' + tip + '" ' +
+                    'data-heat-date="' + cell.date + '"></div>';
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+
+    // 汇总
+    var sum = document.getElementById('heat-summary');
+    if (sum) {
+        var totalDays = days.filter(function (d) { return d.volume > 0; }).length;
+        sum.textContent = '近 ' + data.weeks + ' 周 · 训练 ' + totalDays + ' 天';
+    }
+
+    // 绑定点击
+    box.querySelectorAll('[data-heat-date]').forEach(function (el) {
+        el.addEventListener('click', function () {
+            selectHeatDay(el.dataset.heatDate);
+        });
+    });
+
+    // 默认选中今天
+    selectHeatDay(_heatSelected || todayStr);
+}
+
+async function selectHeatDay(dateStr) {
+    _heatSelected = dateStr;
+    // 高亮刷新
+    var box = document.getElementById('heatmap');
+    if (box) {
+        box.querySelectorAll('[data-heat-date]').forEach(function (el) {
+            if (el.dataset.heatDate === dateStr) {
+                el.classList.add('outline', 'outline-1', 'outline-slate-500');
+            } else {
+                el.classList.remove('outline', 'outline-1', 'outline-slate-500');
+            }
+        });
+    }
+
+    var label = document.getElementById('heat-date-label');
+    var stat = document.getElementById('heat-date-stat');
+    var detail = document.getElementById('heat-day-detail');
+    if (!detail) return;
+
+    var d = new Date(dateStr + 'T00:00:00');
+    var wd = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
+    if (label) label.textContent = dateStr + ' ' + wd;
+
+    detail.innerHTML = '<div class="text-center py-3"><span class="loader"></span></div>';
+
+    try {
+        var res = await API.get('/workouts?date=' + dateStr + '&limit=20');
+        var items = res.items || [];
+        if (!items.length) {
+            detail.innerHTML = '<div class="text-center text-slate-400 text-xs py-3">这天没有训练记录</div>';
+            if (stat) stat.textContent = '';
+            return;
+        }
+        var totalVol = 0;
+        var html = '';
+        items.forEach(function (w) {
+            var vol = 0;
+            (w.sets || []).forEach(function (st) {
+                if (st.is_warmup) return;
+                vol += (st.weight_kg || 0) * (st.reps || 0);
+            });
+            totalVol += vol;
+            var names = [];
+            (w.sets || []).forEach(function (st) {
+                var nm = st.exercise_name || '';
+                if (nm && names.indexOf(nm) < 0) names.push(nm);
+            });
+            html += '<div class="bg-slate-50 rounded-lg p-2.5">' +
+                    '<div class="flex justify-between items-center">' +
+                    '<span class="font-medium text-slate-700 text-xs">' + (w.name || '训练') + '</span>' +
+                    '<span class="text-[11px] text-slate-400">' + Math.round(vol).toLocaleString() + ' kg</span>' +
+                    '</div>' +
+                    (names.length ? '<div class="text-[11px] text-slate-500 mt-1 leading-relaxed">' + names.join(' · ') + '</div>' : '') +
+                    '</div>';
+        });
+        detail.innerHTML = html;
+        if (stat) stat.textContent = '共 ' + items.length + ' 次 · ' + Math.round(totalVol).toLocaleString() + ' kg';
+    } catch (e) {
+        detail.innerHTML = '<div class="text-center text-rose-500 text-xs py-3">' + friendlyError(e) + '</div>';
+    }
+}
+
+async function loadHeatmap() {
+    try {
+        var d = await API.get('/strength/heatmap?weeks=26');
+        renderHeatmap(d);
+    } catch (e) {
+        var box = document.getElementById('heatmap');
+        if (box) box.innerHTML = '<div class="text-xs text-slate-400 py-3">' + friendlyError(e) + '</div>';
+    }
+}
+
+function _renderSyncStatus(st) {
+    var bar = document.getElementById('sync-status-bar');
+    if (!bar) return;
+    var last = st && st.last_sync;
+    var bits = [];
+    if (st && st.auto_body_days) bits.push(st.auto_body_days + ' 天身体数据');
+    if (st && st.auto_runs) bits.push(st.auto_runs + ' 条跑步');
+
+    bar.classList.remove('hidden', 'bg-emerald-50', 'text-emerald-700', 'bg-amber-50', 'text-amber-700');
+    if (last && last.at) {
+        bar.classList.add('bg-emerald-50', 'text-emerald-700');
+        var t = String(last.at).replace('T', ' ').slice(0, 16);
+        bar.innerHTML = '<b>同步正常</b>　最近一次：' + t +
+            (bits.length ? '<br>已接收 ' + bits.join('、') : '');
+    } else if (st && st.has_token) {
+        bar.classList.add('bg-amber-50', 'text-amber-700');
+        bar.innerHTML = '令牌已生成，但还没有收到数据。请在 iPhone 上确认自动化已启用。';
+    } else {
+        bar.classList.add('hidden');
+    }
+}
+
+async function loadSyncStatus() {
+    try {
+        var st = await API.get('/sync/status');
+        _syncCfg = { token: st.has_token ? '__saved__' : '', endpoint: st.endpoint };
+        _renderSyncStatus(st);
+        if (st.has_token) {
+            _markConfigured(true);
+            // 已有令牌时直接拉完整令牌显示
+            try {
+                var full = await API.get('/sync/token');
+                _syncCfg = full;
+                _renderSyncBox(full);
+            } catch (e) {}
+        }
+    } catch (e) {}
+}
+
+
+// ==========================================================
+// iPhone 健康同步：生成可复制的配置
+// ==========================================================
+var _cfg = null;
+
+function _setCfgText(id, txt) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = txt || '--';
+}
+
+// 标记「已配置」状态，避免用户重复建快捷指令
+function _markConfigured(on) {
+    var badge = document.getElementById('sync-badge');
+    if (badge) {
+        if (on) {
+            badge.textContent = '\u5df2\u914d\u7f6e';
+            badge.className = 'text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-medium';
+        } else {
+            badge.textContent = '\u672a\u914d\u7f6e';
+            badge.className = 'text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium';
+        }
+    }
+    var btn = document.getElementById('btn-sync-config');
+    if (btn && !btn.disabled) {
+        btn.textContent = on ? '\u67e5\u770b\u6211\u7684\u540c\u6b65\u5730\u5740' : '\u751f\u6210\u6211\u7684\u540c\u6b65\u5730\u5740';
+    }
+}
+
+async function loadSyncConfig() {
+    try {
+        var d = await API.get('/sync/config');
+        _cfg = d;
+        _setCfgText('cfg-endpoint', d.endpoint);
+        _setCfgText('cfg-url', d.url || d.endpoint);
+        _setCfgText('cfg-header', d.header);
+        _setCfgText('cfg-body', '{"date":"2026-10-18","metrics":{"weight_kg":74.2,"bodyfat_pct":18.5,"resting_hr":57}}');
+        document.getElementById('sync-box').classList.remove('hidden');
+        _markConfigured(true);
+    } catch (e) {
+        _syncMsg(friendlyError(e), false);
+    }
+}
+
+function _copyById(id, btn) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var txt = el.textContent;
+    function done() {
+        var old = btn.textContent;
+        btn.textContent = '已复制';
+        setTimeout(function () { btn.textContent = old; }, 1500);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(txt).then(done).catch(function () {});
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
+    }
+}
+
+function initSyncCard() {
+    // 进页面就查状态，已配置的直接显示，避免重复配置
+    try { loadSyncStatus(); } catch (e) {}
+
+    var btnCfg = document.getElementById('btn-sync-config');
+    if (btnCfg && !btnCfg._bound) {
+        btnCfg._bound = true;
+        btnCfg.addEventListener('click', async function () {
+            btnCfg.disabled = true;
+            btnCfg.textContent = '生成中...';
+            try {
+                await loadSyncConfig();
+                _syncMsg('地址已生成。如果之前已经建过快捷指令，直接用旧的那条即可，不用重复建。', true);
+            } finally {
+                btnCfg.disabled = false;
+                btnCfg.textContent = '重新生成我的配置';
+            }
+        });
+    }
+
+    document.querySelectorAll('.copy-btn').forEach(function (b) {
+        if (b._bound) return;
+        b._bound = true;
+        b.addEventListener('click', function () {
+            var map = { url: 'cfg-url', endpoint: 'cfg-endpoint', header: 'cfg-header', body: 'cfg-body' };
+            var id = map[b.dataset.copy];
+            if (id) _copyById(id, b);
+        });
+    });
+
+    var btnPing = document.getElementById('btn-sync-ping');
+    if (btnPing && !btnPing._bound) {
+        btnPing._bound = true;
+        btnPing.addEventListener('click', async function () {
+            if (!_cfg || !_cfg.token) { _syncMsg('先点上面生成配置', false); return; }
+            try {
+                var res = await fetch('/api/sync/ping', { headers: { 'Authorization': 'Bearer ' + _cfg.token } });
+                var d = await res.json().catch(function () { return {}; });
+                if (res.ok) _syncMsg('连接正常：' + (d.message || '令牌有效'), true);
+                else _syncMsg('测试失败：' + (d.detail || res.status), false);
+            } catch (e) { _syncMsg(friendlyError(e), false); }
+        });
+    }
+
+    var btnRot = document.getElementById('btn-sync-rotate');
+    if (btnRot && !btnRot._bound) {
+        btnRot._bound = true;
+        btnRot.addEventListener('click', async function () {
+            if (!confirm('重置后旧令牌立即失效，手机端需要重新填请求头。确定吗？')) return;
+            try {
+                var d = await API.post('/sync/token/rotate', {});
+                _cfg = { token: d.token, endpoint: _cfg ? _cfg.endpoint : '', header: 'Authorization: Bearer ' + d.token };
+                _setCfgText('cfg-header', _cfg.header);
+                _syncMsg('已重置，请更新手机上的请求头', true);
+            } catch (e) { _syncMsg(friendlyError(e), false); }
+        });
+    }
 }

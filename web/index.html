@@ -177,14 +177,6 @@
                     <div id="trend-total" class="text-center text-xs text-slate-400 mt-2"></div>
                 </div>
                 
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mt-4">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="text-sm font-bold text-slate-600">我的计划</h3>
-                        <button class="text-brand text-xs" onclick="openPlanManager()">编辑</button>
-                    </div>
-                    <div id="plan-preview" class="space-y-2 text-sm text-slate-500">加载中...</div>
-                </div>
-
                 <div class="mt-4">
                     <div class="flex justify-between items-center mb-2">
                         <h3 class="text-sm font-bold text-slate-600">今日记录</h3>
@@ -194,44 +186,83 @@
                         <!-- 当天记录 -->
                     </div>
                 </div>
-            </section>
+            
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mt-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-sm font-bold text-slate-600">训练日历</h3>
+                        <span id="heat-summary" class="text-[11px] text-slate-400"></span>
+                    </div>
+                    <div class="overflow-x-auto pb-1">
+                        <div id="heatmap" class="inline-block min-w-full"></div>
+                    </div>
+                    <div class="flex items-center justify-end gap-1 mt-2 text-[10px] text-slate-400">
+                        <span>少</span>
+                        <span class="w-3 h-3 rounded-sm bg-slate-100"></span>
+                        <span class="w-3 h-3 rounded-sm" style="background:#bbf7d0"></span>
+                        <span class="w-3 h-3 rounded-sm" style="background:#4ade80"></span>
+                        <span class="w-3 h-3 rounded-sm" style="background:#16a34a"></span>
+                        <span class="w-3 h-3 rounded-sm" style="background:#14532d"></span>
+                        <span>多</span>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100">
+                        <div class="flex justify-between items-center mb-2">
+                            <span id="heat-date-label" class="text-xs font-bold text-slate-600"></span>
+                            <span id="heat-date-stat" class="text-[11px] text-slate-400"></span>
+                        </div>
+                        <div id="heat-day-detail" class="space-y-2 text-sm text-slate-500"></div>
+                    </div>
+                </div>
+</section>
 
             <!-- 饮食视图 -->
             <section id="tab-nutrition" class="tab-content hidden space-y-4">
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-lg font-bold">营养与饮食</h2>
-                    <label class="bg-brand text-white text-xs px-3 py-1.5 rounded-full cursor-pointer hover:bg-brand-dark transition">
-                        拍照/选图识餐
-                        <input type="file" id="meal-upload" class="hidden" accept="image/*">
-                    </label>
-                </div>
-                
-                <!-- 营养目标 -->
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                    <h3 class="text-sm font-bold text-slate-600 mb-3">今日宏量目标</h3>
-                    <div class="grid grid-cols-4 gap-2 text-center text-xs">
-                        <div class="bg-slate-50 p-2 rounded-lg">
-                            <div class="text-slate-400">热量</div>
-                            <div class="font-bold text-slate-700 mt-1" id="mac-kcal">--</div>
-                        </div>
-                        <div class="bg-blue-50 p-2 rounded-lg">
-                            <div class="text-blue-400">蛋白</div>
-                            <div class="font-bold text-blue-700 mt-1" id="mac-p">--g</div>
-                        </div>
-                        <div class="bg-amber-50 p-2 rounded-lg">
-                            <div class="text-amber-500">碳水</div>
-                            <div class="font-bold text-amber-700 mt-1" id="mac-c">--g</div>
-                        </div>
-                        <div class="bg-rose-50 p-2 rounded-lg">
-                            <div class="text-rose-400">脂肪</div>
-                            <div class="font-bold text-rose-700 mt-1" id="mac-f">--g</div>
-                        </div>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-open-food" class="bg-white border border-brand/40 text-brand text-xs font-bold px-3 py-1.5 rounded-full">食物库</button>
+                        <label class="bg-brand text-white text-xs px-3 py-1.5 rounded-full cursor-pointer hover:bg-brand-dark transition">
+                            拍照识餐
+                            <input type="file" id="meal-upload" class="hidden" accept="image/*">
+                        </label>
                     </div>
                 </div>
-                
-                <div id="meal-list" class="space-y-3">
-                    <!-- 饮食记录 -->
+
+                <div id="macro-card" class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-slate-600">今日宏量</h3>
+                        <span id="mac-badge" class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">未记录</span>
+                    </div>
+                    <div id="macro-locked" class="text-xs text-slate-400 py-3 text-center leading-relaxed">
+                        记录任意一餐后<br>这里就会显示「已摄入 / 建议摄入」
+                    </div>
+                    <div id="macro-body" class="hidden">
+                        <div class="grid grid-cols-4 gap-2 text-center text-xs">
+                            <div class="bg-slate-50 p-2 rounded-lg">
+                                <div class="text-slate-400">热量</div>
+                                <div class="font-bold text-slate-700 mt-1 text-sm"><span id="mac-kcal">0</span></div>
+                                <div class="text-[10px] text-slate-400 mt-0.5">/ <span id="mac-kcal-t">--</span></div>
+                            </div>
+                            <div class="bg-blue-50 p-2 rounded-lg">
+                                <div class="text-blue-400">蛋白</div>
+                                <div class="font-bold text-blue-700 mt-1 text-sm"><span id="mac-p">0</span>g</div>
+                                <div class="text-[10px] text-blue-400 mt-0.5">/ <span id="mac-p-t">--</span>g</div>
+                            </div>
+                            <div class="bg-amber-50 p-2 rounded-lg">
+                                <div class="text-amber-500">碳水</div>
+                                <div class="font-bold text-amber-700 mt-1 text-sm"><span id="mac-c">0</span>g</div>
+                                <div class="text-[10px] text-amber-500 mt-0.5">/ <span id="mac-c-t">--</span>g</div>
+                            </div>
+                            <div class="bg-rose-50 p-2 rounded-lg">
+                                <div class="text-rose-400">脂肪</div>
+                                <div class="font-bold text-rose-700 mt-1 text-sm"><span id="mac-f">0</span>g</div>
+                                <div class="text-[10px] text-rose-400 mt-0.5">/ <span id="mac-f-t">--</span>g</div>
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-slate-400 mt-2 text-right">已摄入 / 建议 · <span id="mac-daytype">训练日</span></div>
+                    </div>
                 </div>
+
+                <div id="meal-list" class="space-y-3"></div>
             </section>
 
             <section id="tab-me" class="tab-content hidden space-y-4">
@@ -361,6 +392,69 @@
                 <div class="bg-gradient-to-br from-slate-700 to-slate-900 rounded-2xl p-5 text-white shadow-lg">
                     <div class="flex justify-between items-center"><h2 class="text-lg font-bold">设置</h2><button id="btn-back-settings" class="text-xs bg-white/20 px-3 py-1 rounded-lg">返回</button></div>
                     <p class="text-xs opacity-70 mt-1">账号、API Key 与安全选项</p>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border-2 border-brand/30">
+                    <div class="flex justify-between items-start mb-1">
+                        <h3 class="text-sm font-bold text-slate-700">iPhone 健康同步</h3>
+                        <span id="sync-badge" class="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">未配置</span>
+                    </div>
+
+                    <div id="sync-status-bar" class="hidden text-[11px] rounded-lg px-2.5 py-2 mb-3 leading-relaxed"></div>
+
+                    <p class="text-xs text-slate-400 mb-3 leading-relaxed">Health Auto Export 免费版 + 苹果快捷指令，把跑步 / 睡眠 / 心率 / 体重 / 步数 / HRV 一次性全部同步过来。手机上建一次，之后每天自动跑。</p>
+
+                    <button id="btn-sync-config" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition">生成我的同步地址</button>
+                    <div id="sync-msg" class="text-xs mt-2 hidden"></div>
+
+                    <div id="sync-box" class="hidden mt-3">
+                        <div class="bg-amber-50 border border-amber-300 rounded-lg p-2.5">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-[11px] font-bold text-amber-700">同步地址（已含令牌，只复制这一条）</span>
+                                <button data-copy="url" class="copy-btn text-[11px] text-brand font-bold">复制</button>
+                            </div>
+                            <div id="cfg-url" class="text-[11px] bg-white border border-amber-200 rounded-lg px-2 py-1.5 break-all font-mono text-slate-700">--</div>
+                            <div class="text-[10px] text-amber-700 mt-1.5 leading-relaxed">
+                                整条粘进「获取 URL 内容」的 URL 框。<b>「头部」留空，不需要填任何键值对。</b>
+                            </div>
+                        </div>
+                    </div>
+
+                    <details class="mt-3">
+                        <summary class="text-xs text-brand cursor-pointer font-bold">5 步建好（只需一次，之后全自动）</summary>
+                        <div class="text-xs text-slate-500 mt-2 leading-relaxed space-y-1.5">
+                            <div><b>1.</b> 上面点「生成我的同步地址」，复制那一条。</div>
+                            <div><b>2.</b> 快捷指令 App → 右上角 <b>+</b> → 搜 <b>auto</b> → 添加 <b>「批量导出健康指标」</b> → 点它选 <b>「今天」</b>。这个动作一次性包含睡眠/心率/HRV/步数/VO2Max/体重/体脂，不用逐个选。</div>
+                            <div><b>3.</b> 再搜一次 <b>auto</b> → 添加 <b>「导出锻炼」</b> → 也选 <b>「今天」</b>（跑步/骑行/力量记录）。</div>
+                            <div><b>4.</b> 点 <b>+</b> → <b>清空搜索框</b> → 搜 <b>URL</b> → 添加 <b>「获取 URL 内容」</b>（苹果自带，不在 HAE 里）：<br>
+                                方法 <b>POST</b>；URL 粘贴同步地址；<b>头部留空</b>；<b>请求体 = 文件</b> → 分别选第 2、3 步的输出。要做两次。</div>
+                            <div><b>5.</b> 快捷指令 App → <b>自动化</b> → 新建 → <b>时间</b> → 每天 8:00 → 运行这个快捷指令 → 关掉「运行前询问」。</div>
+                        </div>
+                    </details>
+
+                    <details class="mt-2">
+                        <summary class="text-xs text-slate-400 cursor-pointer">高级：原始参数 / 测试 / 重置</summary>
+                        <div class="mt-2 space-y-2">
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-[11px] font-bold text-slate-500">推送地址（不含令牌）</span>
+                                    <button data-copy="endpoint" class="copy-btn text-[11px] text-brand font-bold">复制</button>
+                                </div>
+                                <div id="cfg-endpoint" class="text-[11px] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 break-all font-mono text-slate-600">--</div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-[11px] font-bold text-slate-500">请求头（用 URL 令牌时不需要）</span>
+                                    <button data-copy="header" class="copy-btn text-[11px] text-brand font-bold">复制</button>
+                                </div>
+                                <div id="cfg-header" class="text-[11px] bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 break-all font-mono text-slate-600">--</div>
+                            </div>
+                            <div class="flex gap-2 pt-1">
+                                <button id="btn-sync-ping" class="flex-1 bg-slate-100 text-slate-600 text-xs font-medium py-2 rounded-lg">测试连接</button>
+                                <button id="btn-sync-rotate" class="flex-1 text-rose-500 border border-rose-200 text-xs py-2 rounded-lg">重置令牌</button>
+                            </div>
+                        </div>
+                    </details>
                 </div>
 
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
@@ -633,7 +727,9 @@
         </div>
     </div>
 
-<div id="modal-meal" class="fixed inset-0 bg-black/50 z-50 hidden flex flex-col">
+
+
+    <div id="modal-meal" class="fixed inset-0 bg-black/50 z-50 hidden flex flex-col">
         <div class="bg-white w-full max-w-lg mt-auto rounded-t-2xl max-h-[90vh] flex flex-col h-full sm:h-auto sm:mt-auto">
             <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
                 <h3 class="font-bold text-lg text-brand-dark">识别结果确认</h3>
@@ -657,7 +753,64 @@
         </div>
     </div>
 
-    <script src="/assets/app.js?v=20261018004324"></script>
+    
+    <div id="modal-food" class="fixed inset-0 bg-black/50 z-50 hidden flex flex-col">
+        <div class="bg-white w-full max-w-lg mt-auto rounded-t-2xl h-[88vh] flex flex-col">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
+                <h3 class="font-bold text-lg text-brand-dark">从食物库记餐</h3>
+                <button id="btn-close-food" class="text-slate-400">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="px-4 pt-3 flex items-center gap-2" id="food-slot-pick">
+                <span class="text-xs text-slate-500 shrink-0">记到</span>
+                <button data-slot="breakfast" class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">早餐</button>
+                <button data-slot="lunch" class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">午餐</button>
+                <button data-slot="dinner" class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">晚餐</button>
+                <button data-slot="snack" class="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">加餐</button>
+            </div>
+            <div class="px-4 pt-2">
+                <input id="food-search" placeholder="搜索食物，如 鸡胸肉、米饭…" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div class="px-4 pt-2 flex-1 overflow-y-auto" id="food-list"></div>
+
+            <!-- 份量面板：点食物后出现 -->
+            <div id="food-portion" class="hidden flex-1 flex flex-col min-h-0">
+                <div class="px-4 pt-3 pb-2 border-b border-slate-100">
+                    <div class="text-sm font-bold text-slate-700" id="portion-name">--</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5" id="portion-per100">--</div>
+                </div>
+                <div class="px-4 py-4 flex items-center justify-center gap-4">
+                    <button id="portion-minus" class="w-12 h-12 rounded-full bg-slate-100 text-slate-600 text-2xl font-bold leading-none active:bg-slate-200">−</button>
+                    <div class="text-center">
+                        <input id="portion-grams" type="number" inputmode="decimal" min="1" step="10" value="100"
+                               class="w-28 text-center text-3xl font-bold text-slate-800 border-0 border-b-2 border-brand focus:outline-none bg-transparent">
+                        <div class="text-xs text-slate-400 mt-1">克 (g)</div>
+                    </div>
+                    <button id="portion-plus" class="w-12 h-12 rounded-full bg-brand text-white text-2xl font-bold leading-none active:bg-brand-dark">+</button>
+                </div>
+                <div class="px-4 pb-2 flex flex-wrap gap-2 justify-center" id="portion-presets"></div>
+                <div class="mx-4 mt-2 bg-slate-50 rounded-xl p-3 grid grid-cols-4 gap-2 text-center text-xs">
+                    <div><div class="text-slate-400">热量</div><div class="font-bold text-slate-700 mt-0.5" id="pv-kcal">0</div></div>
+                    <div><div class="text-blue-400">蛋白</div><div class="font-bold text-blue-700 mt-0.5" id="pv-p">0</div></div>
+                    <div><div class="text-amber-500">碳水</div><div class="font-bold text-amber-700 mt-0.5" id="pv-c">0</div></div>
+                    <div><div class="text-rose-400">脂肪</div><div class="font-bold text-rose-700 mt-0.5" id="pv-f">0</div></div>
+                </div>
+                <div class="mt-auto p-3 flex gap-2">
+                    <button id="portion-back" class="flex-1 bg-slate-100 text-slate-600 font-bold py-3 rounded-xl">返回</button>
+                    <button id="portion-add" class="flex-[2] bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl">加入这一餐</button>
+                </div>
+            </div>
+
+            <div id="food-basket-wrap" class="border-t border-slate-100 p-3 bg-slate-50">
+                <div class="flex justify-between text-[11px] text-slate-500 mb-1.5"><span>已选</span><span id="food-sum"></span></div>
+                <div id="food-basket" class="space-y-1 max-h-28 overflow-y-auto mb-2"></div>
+                <button id="btn-save-food" class="w-full bg-brand hover:bg-brand-dark text-white font-bold py-3 rounded-xl transition">记录这一餐</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/assets/app.js?v=20261018141029"></script>
 
 <script>
 // FORCE_SW_RESET: 清理旧 Service Worker 与缓存，避免新版页面被旧 SW 挡住

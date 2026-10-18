@@ -1,4 +1,8 @@
 ﻿import io
-s=io.open("web/assets/app.js",encoding="utf-8").read()
-print("=== 79000-end ===")
-print(s[79000:])
+p=r"D:\GRF\app\sync_api.py"
+s=io.open(p,encoding="utf-8").read()
+lines=s.split("\n")
+print("total lines", len(lines))
+for i in range(385, 460):
+    if i-1 < len(lines):
+        print(i, "|", lines[i-1])
